@@ -12,12 +12,10 @@ body {
 button { font-family: inherit; cursor: pointer; }
 input, select, textarea { font-family: inherit; }
 
-/* Мигание для тревожных чипов (долг, просроченный дедлайн) */
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
-}
-.blink { animation: blink 1.2s ease-in-out infinite; }
+/* Класс тревожных чипов (долг, просроченный дедлайн).
+   Мигание ОТКЛЮЧЕНО по просьбе Кристи 2026-07-15 («я тревожная, будут бесить») —
+   остаются статичные цветные метки. Не включать обратно без её запроса. */
+.blink { animation: none; }
 
 @media print {
   body { background: #fff; }

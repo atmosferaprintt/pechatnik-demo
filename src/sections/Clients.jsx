@@ -5,10 +5,27 @@ import { useState } from 'react';
 const fmt = (n) => (n || 0).toLocaleString('ru-RU');
 const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
 
-export default function Clients({ clients, tasks, transactions, categories, UI, showToast }) {
+export default function Clients({ clients, setClients, tasks, transactions, categories, UI, showToast }) {
   const [query, setQuery] = useState('');
   const [debtorsOnly, setDebtorsOnly] = useState(false);
   const [openClient, setOpenClient] = useState(null);
+  const [priceWhat, setPriceWhat] = useState('');
+  const [priceVal, setPriceVal] = useState('');
+
+  const addPrice = (c) => {
+    if (!priceWhat.trim() || !priceVal.trim()) { showToast('Заполни «что» и «цену»', 'error'); return; }
+    setClients(prev => prev.map(x => x.id === c.id
+      ? { ...x, prices: [...(x.prices || []), { what: priceWhat.trim(), price: priceVal.trim() }] }
+      : x));
+    setPriceWhat(''); setPriceVal('');
+    showToast('Цена записана ✓');
+  };
+
+  const removePrice = (c, i) => {
+    setClients(prev => prev.map(x => x.id === c.id
+      ? { ...x, prices: x.prices.filter((_, idx) => idx !== i) }
+      : x));
+  };
 
   const clientTasks = (id) => tasks.filter(t => t.client_id === id);
   const clientPayments = (id) => {
@@ -78,7 +95,10 @@ export default function Clients({ clients, tasks, transactions, categories, UI, 
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14,
                     }}>{c.name[0]}</span>
                   </td>
-                  <td style={{ ...td, fontWeight: 700 }}>{c.name}</td>
+                  <td style={{ ...td, fontWeight: 700 }}>
+                    {c.name}
+                    {(c.prices || []).length > 0 && <span title="Есть индивидуальные цены" style={{ marginLeft: 8, background: 'rgba(247,214,74,.5)', borderRadius: 999, padding: '3px 9px', fontSize: 11.5, fontWeight: 800 }}>% цены</span>}
+                  </td>
                   <td style={td}>{c.phone}</td>
                   <td style={td}>{c.instagram ? <span style={{ background: UI.soft, borderRadius: 999, padding: '4px 12px', fontSize: 12.5 }}>{c.instagram}</span> : <span style={{ color: UI.muted }}>—</span>}</td>
                   <td style={{ ...td, textAlign: 'center' }}>
@@ -104,7 +124,7 @@ export default function Clients({ clients, tasks, transactions, categories, UI, 
 
       {/* Карточка клиента */}
       {openClient && (() => {
-        const c = openClient;
+        const c = clients.find(x => x.id === openClient.id) || openClient;
         const ct = clientTasks(c.id);
         const cp = clientPayments(c.id);
         const debt = clientDebt(c.id);
@@ -132,7 +152,29 @@ export default function Clients({ clients, tasks, transactions, categories, UI, 
                 <Mini label="Долг" value={debt > 0 ? `${fmt(debt)} ₽` : 'нет'} danger={debt > 0} UI={UI} />
               </div>
 
-              {c.note && <div style={{ background: UI.soft, borderRadius: 14, padding: '11px 14px', fontSize: 13.5, marginBottom: 18 }}>📝 {c.note}</div>}
+              {c.note && <div style={{ background: UI.soft, borderRadius: 14, padding: '11px 14px', fontSize: 13.5, marginBottom: 16 }}>📝 {c.note}</div>}
+
+              {/* Индивидуальные цены — чтобы скидки были перед глазами, а не в переписке */}
+              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>💰 Индивидуальные цены</div>
+              <div style={{ background: 'rgba(247,214,74,.15)', border: `1.5px solid ${UI.accent}`, borderRadius: 16, padding: '8px 14px 12px', marginBottom: 16 }}>
+                {(c.prices || []).map((p, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 0', borderBottom: `1px solid ${UI.line}`, fontSize: 13.5 }}>
+                    <span style={{ fontWeight: 600 }}>{p.what}</span>
+                    <span style={{ marginLeft: 'auto', fontWeight: 800 }}>{p.price}</span>
+                    <button onClick={() => removePrice(c, i)} title="Удалить" style={{ border: 'none', background: 'transparent', color: UI.muted, fontSize: 13, cursor: 'pointer', padding: 2 }}>✕</button>
+                  </div>
+                ))}
+                {!(c.prices || []).length && <div style={{ color: UI.muted, fontSize: 13, padding: '6px 0' }}>Особых цен нет — обычный прайс</div>}
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <input value={priceWhat} onChange={e => setPriceWhat(e.target.value)} placeholder="Что (бирки атлас…)" style={{
+                    flex: 1.3, padding: '10px 12px', borderRadius: 12, border: `1px solid ${UI.line}`, background: '#fff', fontSize: 13, outline: 'none', minWidth: 0,
+                  }} />
+                  <input value={priceVal} onChange={e => setPriceVal(e.target.value)} placeholder="Цена (15 ₽/шт, −10%…)" style={{
+                    flex: 1, padding: '10px 12px', borderRadius: 12, border: `1px solid ${UI.line}`, background: '#fff', fontSize: 13, outline: 'none', minWidth: 0,
+                  }} />
+                  <button onClick={() => addPrice(c)} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '0 16px', fontWeight: 800, fontSize: 13 }}>+</button>
+                </div>
+              </div>
 
               <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Задачи</div>
               {ct.length ? ct.map(t => {

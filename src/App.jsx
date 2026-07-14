@@ -67,11 +67,12 @@ const DEMO_USERS = [
   { id: 'u6', name: 'Людмила', role: 'employee' },
 ];
 
+// prices — индивидуальные цены/договорённости (просьба Кристи: видеть скидки, а не искать по вацапу)
 const DEMO_CLIENTS = [
-  { id: 1, name: 'Мадина · салон «Жасмин»', phone: '+7 928 555-12-34', instagram: '@jasmin_mkala', note: 'Постоянная, бирки каждый месяц' },
-  { id: 2, name: 'Ахмед · кафе «Очаг»', phone: '+7 963 400-77-10', instagram: '@ochag_cafe', note: 'Меню, наклейки' },
-  { id: 3, name: 'Патимат', phone: '+7 988 300-45-67', instagram: '', note: 'Фото на документы, ксерокс' },
-  { id: 4, name: 'Магомед · автосервис', phone: '+7 928 111-22-33', instagram: '@ms_auto05', note: 'Визитки, баннер на фасад' },
+  { id: 1, name: 'Мадина · салон «Жасмин»', phone: '+7 928 555-12-34', instagram: '@jasmin_mkala', note: 'Постоянная, бирки каждый месяц', prices: [{ what: 'Бирки атлас', price: '15 ₽/шт (обычная 17)' }, { what: 'Ленты с лого', price: '−10% от прайса' }] },
+  { id: 2, name: 'Ахмед · кафе «Очаг»', phone: '+7 963 400-77-10', instagram: '@ochag_cafe', note: 'Меню, наклейки', prices: [{ what: 'Меню А4 + ламинация', price: '200 ₽/шт от 15 шт' }] },
+  { id: 3, name: 'Патимат', phone: '+7 988 300-45-67', instagram: '', note: 'Фото на документы, ксерокс', prices: [] },
+  { id: 4, name: 'Магомед · автосервис', phone: '+7 928 111-22-33', instagram: '@ms_auto05', note: 'Визитки, баннер на фасад', prices: [] },
 ];
 
 // assignee = у кого задача сейчас (колонка канбана); log = история действий и передач
@@ -256,7 +257,7 @@ export default function App() {
   const visibleTabs = TABS.filter(t => t.roles.includes(userRole));
   const sectionProps = {
     supabase, currentUser, userRole, isOwner, showToast, onUpdate: loadAll, loadAllRows,
-    clients, tasks, categories, banks, transactions, contractors, contractorTasks, deposits, setDeposits,
+    clients, setClients, tasks, categories, banks, transactions, contractors, contractorTasks, deposits, setDeposits,
     setTasks, setTransactions, setContractors, setContractorTasks, CONTRACTOR_STAGES, PEOPLE_COLUMNS,
     demoUsers: DEMO_USERS, demoBankRows: DEMO_BANK_ROWS,
     loading, UI, STAGES, PAYMENT_METHODS, DEMO,

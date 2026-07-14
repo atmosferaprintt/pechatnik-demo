@@ -204,17 +204,26 @@ function OwnerView(props) {
   // Все расчёты — за выбранный день
   const dayTx = transactions.filter(t => t.op_date === opDate);
 
-  // Личные расходы Кристи — отдельно от бизнеса (как в её Excel: блок «личные» внизу).
-  // В «Расходы за день» и общую ленту НЕ входят; наличные личные из кассы в кассе учитываются.
-  const isPersonal = (t) => categories.find(c => c.id === t.category_id)?.kind === 'expense_personal';
-  const businessTx = dayTx.filter(t => !isPersonal(t));
+  // Разделение расходов (просьба Кристи 2026-07-15):
+  //  - день/касса = только операционка, которую вносят девочки (expense_shared: доставка, возврат, другое)
+  //  - крупные рабочие (expense_work: бумага, тонер, поставщики) — НЕ в расходах дня, отдельной карточкой,
+  //    чтобы сверка кассы не уходила в минус; в месячной аналитике учитываются полностью
+  //  - личные Кристи (expense_personal) — отдельно, как раньше
+  const catKind = (t) => categories.find(c => c.id === t.category_id)?.kind;
+  const isPersonal = (t) => catKind(t) === 'expense_personal';
+  const isBigWork = (t) => t.type === 'expense' && catKind(t) === 'expense_work';
+
+  const dailyTx = dayTx.filter(t => !isPersonal(t) && !isBigWork(t)); // лента дня: доходы + операционка
+  const bigTx = dayTx.filter(isBigWork);
+  const bigTotal = bigTx.reduce((s, t) => s + t.amount, 0);
   const personalTx = dayTx.filter(isPersonal);
   const personalTotal = personalTx.reduce((s, t) => s + t.amount, 0);
 
-  const income = businessTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-  const expense = businessTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-  const cashIn = dayTx.filter(t => t.type === 'income' && t.payment_method === 'cash').reduce((s, t) => s + t.amount, 0);
-  const cashOut = dayTx.filter(t => t.type === 'expense' && t.payment_method === 'cash').reduce((s, t) => s + t.amount, 0);
+  const income = dailyTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const expense = dailyTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  // Касса дня: наличные приходы минус наличная операционка (крупные и личные кассу дня не трогают)
+  const cashIn = dailyTx.filter(t => t.type === 'income' && t.payment_method === 'cash').reduce((s, t) => s + t.amount, 0);
+  const cashOut = dailyTx.filter(t => t.type === 'expense' && t.payment_method === 'cash').reduce((s, t) => s + t.amount, 0);
 
   // Выписка в демо есть только за «сегодня»
   const dayBankRows = isToday ? demoBankRows : [];
@@ -257,8 +266,8 @@ function OwnerView(props) {
 
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 26, flex: 2, minWidth: 380 }}>
-          <div style={{ fontWeight: 800, marginBottom: 14 }}>Операции за день · {businessTx.length}</div>
-          {businessTx.map(t => (
+          <div style={{ fontWeight: 800, marginBottom: 14 }}>Операции за день · {dailyTx.length}</div>
+          {dailyTx.map(t => (
             <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14, flexWrap: 'wrap' }}>
               <span>{t.type === 'income' ? '💰' : '💸'}</span>
               <span style={{ fontWeight: 600 }}>{catName(t.category_id)}</span>
@@ -309,6 +318,23 @@ function OwnerView(props) {
               Закрыть день
             </button>
           </div>
+        </div>
+
+        {/* Крупные рабочие расходы — вне дня и кассы, чтобы сверка не уходила в минус */}
+        <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 24 }}>
+          <div style={{ fontWeight: 800, marginBottom: 4, display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            📦 Крупные расходы
+            <span style={{ marginLeft: 'auto', fontSize: 18 }}>{fmt(bigTotal)} ₽</span>
+          </div>
+          <div style={{ color: UI.muted, fontSize: 12.5, marginBottom: 10 }}>Бумага, тонер, поставщики. В расход дня и кассу не входят — учитываются в месяце.</div>
+          {bigTx.length ? bigTx.map(t => (
+            <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
+              <span style={{ fontWeight: 600 }}>{catName(t.category_id)}</span>
+              <span style={{ color: UI.muted, fontSize: 12.5 }}>{t.comment}</span>
+              <span style={{ marginLeft: 'auto', fontWeight: 700 }}>−{fmt(t.amount)} ₽</span>
+              <span style={{ color: UI.muted, fontSize: 12.5 }}>{t.time}</span>
+            </div>
+          )) : <div style={{ color: UI.muted, fontSize: 13.5 }}>Без крупных расходов</div>}
         </div>
 
         {/* Личные расходы — видит только Кристи, в бизнес-итоги не входят */}

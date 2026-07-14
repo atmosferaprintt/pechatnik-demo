@@ -8,6 +8,7 @@ import Dashboard from './sections/Dashboard.jsx';
 import Tasks from './sections/Tasks.jsx';
 import Clients from './sections/Clients.jsx';
 import Contractors from './sections/Contractors.jsx';
+import Deposits from './sections/Deposits.jsx';
 import Finance from './sections/Finance.jsx';
 import Analytics from './sections/Analytics.jsx';
 import Settings from './sections/Settings.jsx';
@@ -50,6 +51,7 @@ const TABS = [
   { key: 'tasks', label: 'Задачи', roles: ['owner', 'employee'] },
   { key: 'clients', label: 'Клиенты', roles: ['owner', 'employee'] },
   { key: 'contractors', label: 'Контрагенты', roles: ['owner', 'employee'] },
+  { key: 'deposits', label: 'Депозиты', roles: ['owner', 'employee'] },
   { key: 'finance', label: 'Финансы', roles: ['owner', 'employee'] },
   { key: 'analytics', label: 'Аналитика', roles: ['owner'] },
   { key: 'settings', label: 'Настройки', roles: ['owner'] },
@@ -81,6 +83,24 @@ const DEMO_TASKS = [
   { id: 5, title: 'Кружки с фото ×3', client_id: 3, stage: 'Производство', amount: 1950, deadline: '2026-07-17', assignee: 'Кристи', created_at: '2026-07-13', description: 'Фото прислала в директ, белые кружки 330 мл.', log: [{ who: 'Кристи', action: 'приняла', time: '13.07 14:00' }] },
   { id: 6, title: 'Наклейки на банки 300 шт', client_id: 2, stage: 'Готово', amount: 5100, deadline: '2026-07-13', assignee: 'Сборка', created_at: '2026-07-10', description: 'Круглые 60 мм, влагостойкая плёнка. Забирают сами.', parts: [{ name: 'Печать', amount: 3600 }, { name: 'Дизайн', amount: 1500 }], log: [{ who: 'Настя', action: 'приняла', time: '10.07 12:00' }, { who: 'Настя', action: 'распечатала', time: '12.07 16:40' }, { who: 'Настя', action: '→ в Сборку · готово к выдаче', time: '13.07 10:00' }] },
   { id: 7, title: 'Бейджи 30 шт', client_id: 1, stage: 'Производство', amount: 2100, deadline: '2026-07-16', assignee: 'Марьян', created_at: '2026-07-14', description: 'Бейджи с окошком, вставки печатаем.', log: [{ who: 'Алена', action: 'приняла', time: '14.07 09:10' }, { who: 'Алена', action: 'подготовила к печати', time: '14.07 11:30' }, { who: 'Алена', action: '→ передала Марьян · изготовление', time: '14.07 11:35' }] },
+  // Завершённые: с долгом — висят в разделе «Долги», оплаченные — в «Завершённых»
+  { id: 8, title: 'Календари А3 ×50', client_id: 4, stage: 'Готово', amount: 6000, deadline: '2026-07-10', assignee: 'Сборка', created_at: '2026-07-05', description: 'Выдали 10.07, обещал перевести.', done: true, log: [{ who: 'Влада', action: 'приняла', time: '05.07 10:00' }, { who: 'Влада', action: '✓ завершила · выдано клиенту', time: '10.07 15:20' }] },
+  { id: 9, title: 'Листовки А6 1000 шт', client_id: 3, stage: 'Готово', amount: 3800, deadline: '2026-07-08', assignee: 'Сборка', created_at: '2026-07-03', description: '', done: true, log: [{ who: 'Алена', action: '✓ завершила', time: '08.07 12:00' }] },
+];
+
+// Депозиты — бюджетники вносят сумму и расходуют частями
+const DEMO_DEPOSITS = [
+  {
+    id: 1, name: 'Администрация района', total: 50000, created_at: '2026-07-01',
+    uses: [
+      { date: '2026-07-05', what: 'Бланки писем 2000 шт', amount: 8000 },
+      { date: '2026-07-11', what: 'Грамоты А4 ×150', amount: 4500 },
+    ],
+  },
+  {
+    id: 2, name: 'Школа №8', total: 15000, created_at: '2026-07-10',
+    uses: [{ date: '2026-07-12', what: 'Стенгазеты А1 ×3', amount: 2700 }],
+  },
 ];
 
 // Контрагенты — подрядчики, которым отдаём перезаказы (широкоформат, гравировка и т.п.)
@@ -123,7 +143,7 @@ const DEMO_BANKS = [
 ];
 
 const DEMO_TRANSACTIONS = [
-  { id: 1, op_date: '2026-07-14', type: 'income', category_id: 1, amount: 240, payment_method: 'cash', bank_id: null, created_by: 'Влада', comment: '', time: '09:12' },
+  { id: 1, op_date: '2026-07-14', type: 'income', category_id: 1, amount: 1240, payment_method: 'cash', bank_id: null, created_by: 'Влада', comment: '', time: '09:12' },
   { id: 2, op_date: '2026-07-14', type: 'income', category_id: 3, amount: 500, payment_method: 'sbp', bank_id: null, created_by: 'Настя', comment: 'фото 3×4', time: '09:40' },
   { id: 3, op_date: '2026-07-14', type: 'income', category_id: 2, amount: 3200, payment_method: 'transfer', bank_id: 2, created_by: 'Алена', comment: 'листовки А5', time: '10:05' },
   { id: 4, op_date: '2026-07-14', type: 'expense', category_id: 7, amount: 350, payment_method: 'cash', bank_id: null, created_by: 'Марьян', comment: 'доставка баннера', time: '11:20' },
@@ -137,6 +157,7 @@ const DEMO_TRANSACTIONS = [
   { id: 11, op_date: '2026-07-13', type: 'income', category_id: 1, amount: 180, payment_method: 'cash', bank_id: null, created_by: 'Влада', comment: '', time: '13:05' },
   { id: 12, op_date: '2026-07-13', type: 'income', category_id: 4, amount: 2600, payment_method: 'transfer', bank_id: 3, created_by: 'Алена', comment: 'кружки-магниты', time: '15:30' },
   { id: 13, op_date: '2026-07-13', type: 'expense', category_id: 11, amount: 3300, payment_method: 'cash', bank_id: null, created_by: 'Кристи', comment: 'бумага SvetoCopy', time: '17:10' },
+  { id: 14, op_date: '2026-07-08', type: 'income', category_id: 2, amount: 3800, payment_method: 'sbp', bank_id: null, created_by: 'Алена', comment: 'листовки', time: '12:05', task_id: 9, client_id: 3 },
 ];
 
 // Строки «выписки» для демо сверки: одна сумма пришла, но не записана
@@ -172,6 +193,7 @@ export default function App() {
   const [banks, setBanks] = useState(DEMO ? DEMO_BANKS : []);
   const [contractors, setContractors] = useState(DEMO ? DEMO_CONTRACTORS : []);
   const [contractorTasks, setContractorTasks] = useState(DEMO ? DEMO_CONTRACTOR_TASKS : []);
+  const [deposits, setDeposits] = useState(DEMO ? DEMO_DEPOSITS : []);
   const [transactions, setTransactions] = useState(DEMO ? DEMO_TRANSACTIONS : []);
   const [loading, setLoading] = useState(!DEMO);
 
@@ -234,7 +256,7 @@ export default function App() {
   const visibleTabs = TABS.filter(t => t.roles.includes(userRole));
   const sectionProps = {
     supabase, currentUser, userRole, isOwner, showToast, onUpdate: loadAll, loadAllRows,
-    clients, tasks, categories, banks, transactions, contractors, contractorTasks,
+    clients, tasks, categories, banks, transactions, contractors, contractorTasks, deposits, setDeposits,
     setTasks, setTransactions, setContractors, setContractorTasks, CONTRACTOR_STAGES, PEOPLE_COLUMNS,
     demoUsers: DEMO_USERS, demoBankRows: DEMO_BANK_ROWS,
     loading, UI, STAGES, PAYMENT_METHODS, DEMO,
@@ -281,6 +303,7 @@ export default function App() {
         {tab === 'tasks' && <Tasks {...sectionProps} />}
         {tab === 'clients' && <Clients {...sectionProps} />}
         {tab === 'contractors' && <Contractors {...sectionProps} />}
+        {tab === 'deposits' && <Deposits {...sectionProps} />}
         {tab === 'finance' && <Finance {...sectionProps} />}
         {tab === 'analytics' && isOwner && <Analytics {...sectionProps} />}
         {tab === 'settings' && isOwner && <Settings {...sectionProps} />}

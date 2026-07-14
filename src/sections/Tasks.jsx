@@ -24,6 +24,7 @@ function deadlineStatus(t) {
 
 export default function Tasks({ tasks, setTasks, clients, contractors, transactions, setTransactions, categories, banks, currentUser, PAYMENT_METHODS, PEOPLE_COLUMNS, UI, showToast }) {
   const [openTask, setOpenTask] = useState(null);
+  const [view, setView] = useState('board'); // board | debts | done
   const [showPayForm, setShowPayForm] = useState(false);
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState('cash');
@@ -37,6 +38,29 @@ export default function Tasks({ tasks, setTasks, clients, contractors, transacti
   const paidSum = (taskId) => payments(taskId).reduce((s, p) => s + p.amount, 0);
   const catName = (id) => categories.find(c => c.id === id)?.name || '?';
   const incomeCats = categories.filter(c => c.kind === 'income');
+  const taskDebt = (t) => (t.amount || 0) - paidSum(t.id);
+
+  // Завершённая задача уходит с доски: с долгом — в «Долги», оплаченная — в «Завершённые»
+  const activeTasks = tasks.filter(t => !t.done);
+  const debtTasks = tasks.filter(t => t.done && taskDebt(t) > 0);
+  const doneTasks = tasks.filter(t => t.done && taskDebt(t) <= 0);
+
+  const finishTask = (task, e) => {
+    e?.stopPropagation();
+    const debt = taskDebt(task);
+    setTasks(prev => prev.map(t => t.id === task.id
+      ? { ...t, done: true, log: [...(t.log || []), { who: currentUser.name, action: '✓ завершила', time: NOW() }] }
+      : t));
+    setOpenTask(null);
+    showToast(debt > 0 ? `«${task.title}» завершена → 💸 Долги (${fmt(debt)})` : `«${task.title}» завершена ✓`);
+  };
+
+  const reopenTask = (task) => {
+    setTasks(prev => prev.map(t => t.id === task.id
+      ? { ...t, done: false, log: [...(t.log || []), { who: currentUser.name, action: '↩ вернула в работу', time: NOW() }] }
+      : t));
+    showToast(`«${task.title}» снова в работе ↩`);
+  };
 
   // Передать задачу другому человеку (или в Сборку) — с записью в историю
   const transfer = (task, to) => {
@@ -115,18 +139,51 @@ export default function Tasks({ tasks, setTasks, clients, contractors, transacti
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, margin: '4px 0 20px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0 20px', flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: 34, fontWeight: 500, margin: 0 }}>Задачи</h1>
-        <span style={{ color: UI.muted, fontSize: 14 }}>у каждого свой задачник · задачи передаются между людьми</span>
+        <div style={{ display: 'flex', background: '#fff', borderRadius: 999, padding: 5, boxShadow: UI.shadow }}>
+          {[['board', `Доска · ${activeTasks.length}`], ['debts', `💸 Долги · ${debtTasks.length}`], ['done', `✓ Завершённые · ${doneTasks.length}`]].map(([k, l]) => (
+            <button key={k} onClick={() => setView(k)} className={k === 'debts' && debtTasks.length && view !== 'debts' ? 'blink' : undefined} style={{
+              border: 'none', borderRadius: 999, padding: '9px 16px', fontSize: 13, fontWeight: 700,
+              background: view === k ? UI.dark : k === 'debts' && debtTasks.length ? 'rgba(192,57,43,.12)' : 'transparent',
+              color: view === k ? '#fff' : k === 'debts' && debtTasks.length ? '#c0392b' : UI.dark,
+            }}>{l}</button>
+          ))}
+        </div>
         <button onClick={() => showToast('Форма новой задачи — после утверждения макета')} style={{
           border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '10px 20px', fontWeight: 700, fontSize: 14, marginLeft: 'auto',
         }}>+ Новая задача</button>
       </div>
 
+      {/* Списки долгов и завершённых — отдельно от доски */}
+      {view !== 'board' && (
+        <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 24, maxWidth: 860 }}>
+          <div style={{ fontWeight: 800, marginBottom: 4 }}>{view === 'debts' ? '💸 Завершённые, но не оплаченные' : '✓ Завершённые и оплаченные'}</div>
+          <div style={{ color: UI.muted, fontSize: 13, marginBottom: 14 }}>
+            {view === 'debts' ? 'Висят здесь, пока клиент не оплатит. Клик — открыть и записать оплату.' : 'Архив. Клик — открыть карточку.'}
+          </div>
+          {(view === 'debts' ? debtTasks : doneTasks).map(t => (
+            <div key={t.id} onClick={() => { setOpenTask(t); setShowPayForm(false); }} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '12px 4px', borderBottom: `1px solid ${UI.line}`, fontSize: 14, cursor: 'pointer' }}>
+              <span style={{ fontWeight: 700 }}>{t.title}</span>
+              <span style={{ color: UI.muted, fontSize: 12.5 }}>{clientShort(t.client_id)}</span>
+              <span style={{ color: UI.muted, fontSize: 12.5 }}>{t.log?.length ? t.log[t.log.length - 1].time : ''}</span>
+              <span style={{ marginLeft: 'auto', fontWeight: 700 }}>{fmt(t.amount)}</span>
+              {view === 'debts'
+                ? <span className="blink" style={{ background: '#c0392b', color: '#fff', borderRadius: 999, padding: '4px 12px', fontSize: 12.5, fontWeight: 700 }}>долг {fmt(taskDebt(t))}</span>
+                : <span style={{ background: 'rgba(247,214,74,.5)', borderRadius: 999, padding: '4px 12px', fontSize: 12.5, fontWeight: 700 }}>✓ оплачено</span>}
+            </div>
+          ))}
+          {!(view === 'debts' ? debtTasks : doneTasks).length && (
+            <div style={{ color: UI.muted, fontSize: 14 }}>{view === 'debts' ? 'Долгов нет 🎉' : 'Пока пусто'}</div>
+          )}
+        </div>
+      )}
+
+      {view === 'board' && (
       <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', overflowX: 'auto', paddingBottom: 8 }}>
         {PEOPLE_COLUMNS.map(person => {
           const isAssembly = person === 'Сборка';
-          const inCol = tasks.filter(t => t.assignee === person);
+          const inCol = activeTasks.filter(t => t.assignee === person);
           const sum = inCol.reduce((s, t) => s + (t.amount || 0), 0);
           return (
             <div key={person} style={{ minWidth: 230, flex: 1, background: isAssembly ? '#f0ecdf' : UI.soft, borderRadius: 22, padding: 12 }}>
@@ -162,14 +219,20 @@ export default function Tasks({ tasks, setTasks, clients, contractors, transacti
                       <PayChip t={t} />
                       <DeadlineChip t={t} />
                     </div>
-                    {/* Передать другому — не открывая карточку */}
-                    <select value="" onClick={e => e.stopPropagation()} onChange={e => transfer(t, e.target.value)} style={{
-                      marginTop: 9, width: '100%', border: 'none', background: UI.soft, borderRadius: 999,
-                      padding: '6px 10px', fontSize: 12, fontWeight: 600, outline: 'none', cursor: 'pointer',
-                    }}>
-                      <option value="">→ передать…</option>
-                      {PEOPLE_COLUMNS.filter(p => p !== person).map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
+                    {/* Передать другому или завершить — не открывая карточку */}
+                    <div style={{ display: 'flex', gap: 6, marginTop: 9 }}>
+                      <select value="" onClick={e => e.stopPropagation()} onChange={e => transfer(t, e.target.value)} style={{
+                        flex: 1, border: 'none', background: UI.soft, borderRadius: 999, minWidth: 0,
+                        padding: '6px 10px', fontSize: 12, fontWeight: 600, outline: 'none', cursor: 'pointer',
+                      }}>
+                        <option value="">→ передать…</option>
+                        {PEOPLE_COLUMNS.filter(p => p !== person).map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                      <button title="Завершить задачу" onClick={(e) => finishTask(t, e)} style={{
+                        border: 'none', background: isAssembly ? UI.accent : UI.soft, borderRadius: 999,
+                        padding: '5px 12px', fontSize: 12.5, fontWeight: 800, flexShrink: 0,
+                      }}>✓</button>
+                    </div>
                   </div>
                 );
               })}
@@ -178,6 +241,7 @@ export default function Tasks({ tasks, setTasks, clients, contractors, transacti
           );
         })}
       </div>
+      )}
 
       {/* Карточка задачи */}
       {openTask && (() => {
@@ -329,15 +393,24 @@ export default function Tasks({ tasks, setTasks, clients, contractors, transacti
                   </div>
                 </div>
               ) : (
-                <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
                   {debt > 0 && (
                     <button onClick={() => openPayForm(debt)} style={{
-                      flex: 1, border: 'none', background: UI.accent, color: UI.dark, borderRadius: 999, padding: '13px 0', fontWeight: 800, fontSize: 14,
+                      flex: 1, border: 'none', background: UI.accent, color: UI.dark, borderRadius: 999, padding: '13px 0', fontWeight: 800, fontSize: 14, minWidth: 200,
                     }}>💰 Записать оплату ({fmt(debt)})</button>
                   )}
+                  {t.done ? (
+                    <button onClick={() => reopenTask(t)} style={{
+                      border: 'none', background: UI.soft, borderRadius: 999, padding: '13px 18px', fontWeight: 700, fontSize: 14,
+                    }}>↩ Вернуть в работу</button>
+                  ) : (
+                    <button onClick={() => finishTask(t)} style={{
+                      border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '13px 18px', fontWeight: 800, fontSize: 14,
+                    }}>✓ Завершить</button>
+                  )}
                   <button onClick={() => repeatTask(t)} style={{
-                    flex: debt > 0 ? undefined : 1, border: 'none', background: UI.soft, borderRadius: 999, padding: '13px 18px', fontWeight: 700, fontSize: 14,
-                  }}>🔁 Повторить заказ</button>
+                    border: 'none', background: UI.soft, borderRadius: 999, padding: '13px 18px', fontWeight: 700, fontSize: 14,
+                  }}>🔁 Повторить</button>
                 </div>
               )}
             </div>

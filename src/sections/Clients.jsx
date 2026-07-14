@@ -59,7 +59,7 @@ export default function Clients({ clients, setClients, tasks, transactions, cate
           onChange={e => setQuery(e.target.value)}
           placeholder="🔍 Поиск по имени, телефону, инстаграму"
           style={{
-            marginLeft: 'auto', width: 300, padding: '12px 20px', borderRadius: 999, border: 'none',
+            marginLeft: 'auto', width: 'min(300px, 100%)', padding: '12px 20px', borderRadius: 999, border: 'none',
             background: '#fff', boxShadow: UI.shadow, fontSize: 14, outline: 'none',
           }}
         />
@@ -68,8 +68,8 @@ export default function Clients({ clients, setClients, tasks, transactions, cate
         }}>+ Клиент</button>
       </div>
 
-      <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <table style={{ width: '100%', minWidth: 680, borderCollapse: 'collapse' }}>
           <thead>
             <tr>
               <th style={{ ...th, width: 46 }}></th>
@@ -133,7 +133,7 @@ export default function Clients({ clients, setClients, tasks, transactions, cate
             position: 'fixed', inset: 0, background: 'rgba(29,29,31,.45)', display: 'flex',
             alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20,
           }}>
-            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 26, padding: 28, width: 600, maxHeight: '90vh', overflowY: 'auto' }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 26, padding: 28, width: 'min(600px, 100%)', maxHeight: '90vh', overflowY: 'auto' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
                 <span style={{
                   width: 52, height: 52, borderRadius: '50%', background: UI.accent, color: UI.dark,

@@ -125,7 +125,7 @@ export default function Deposits({ deposits, setDeposits, UI, showToast }) {
           position: 'fixed', inset: 0, background: 'rgba(29,29,31,.45)', display: 'flex',
           alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20,
         }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 26, padding: 26, width: 420, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 26, padding: 26, width: 'min(420px, 100%)', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center' }}>
               <span style={{ fontWeight: 800, fontSize: 17 }}>Новый депозит</span>
               <button onClick={() => setShowAdd(false)} style={{ marginLeft: 'auto', border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 15 }}>✕</button>

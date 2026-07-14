@@ -121,7 +121,7 @@ function ContractorBoard({ contractors, contractorTasks, setContractorTasks, CON
           position: 'fixed', inset: 0, background: 'rgba(29,29,31,.45)', display: 'flex',
           alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20,
         }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 26, padding: 26, width: 440, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 26, padding: 26, width: 'min(440px, 100%)', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center' }}>
               <span style={{ fontWeight: 800, fontSize: 17 }}>Задача подрядчику</span>
               <button onClick={() => setShowAdd(false)} style={{ marginLeft: 'auto', border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 15 }}>✕</button>
@@ -220,7 +220,7 @@ function ContractorList({ contractors, setContractors, contractorTasks, tasks, c
             position: 'fixed', inset: 0, background: 'rgba(29,29,31,.45)', display: 'flex',
             alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20,
           }}>
-            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 26, padding: 28, width: 560, maxHeight: '90vh', overflowY: 'auto' }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 26, padding: 28, width: 'min(560px, 100%)', maxHeight: '90vh', overflowY: 'auto' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
                 <div>
                   <div style={{ fontSize: 20, fontWeight: 800 }}>🏭 {c.name}</div>
@@ -261,7 +261,7 @@ function ContractorList({ contractors, setContractors, contractorTasks, tasks, c
           position: 'fixed', inset: 0, background: 'rgba(29,29,31,.45)', display: 'flex',
           alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20,
         }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 26, padding: 26, width: 420, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 26, padding: 26, width: 'min(420px, 100%)', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center' }}>
               <span style={{ fontWeight: 800, fontSize: 17 }}>Новый контрагент</span>
               <button onClick={() => setShowAdd(false)} style={{ marginLeft: 'auto', border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 15 }}>✕</button>

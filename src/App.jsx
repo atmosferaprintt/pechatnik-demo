@@ -3,6 +3,7 @@
 // Пока .env.local пустой — работает ДЕМО-РЕЖИМ с тестовыми данными (без Supabase).
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import useIsMobile from './mobile/useIsMobile.js';
 
 import Dashboard from './sections/Dashboard.jsx';
 import Tasks from './sections/Tasks.jsx';
@@ -183,6 +184,7 @@ async function loadAllRows(table, columns = '*', pageSize = 1000, filter = null)
 }
 
 export default function App() {
+  const isMobile = useIsMobile();
   const [session, setSession] = useState(null);
   const [currentUser, setCurrentUser] = useState(DEMO ? DEMO_USERS[0] : null);
   const [tab, setTab] = useState(() => localStorage.getItem('tab') || 'tasks');
@@ -260,38 +262,45 @@ export default function App() {
     clients, setClients, tasks, categories, banks, transactions, contractors, contractorTasks, deposits, setDeposits,
     setTasks, setTransactions, setContractors, setContractorTasks, CONTRACTOR_STAGES, PEOPLE_COLUMNS,
     demoUsers: DEMO_USERS, demoBankRows: DEMO_BANK_ROWS,
-    loading, UI, STAGES, PAYMENT_METHODS, DEMO,
+    loading, UI, STAGES, PAYMENT_METHODS, DEMO, isMobile,
   };
 
   return (
-    <div style={{ minHeight: '100vh', padding: '20px 28px 40px', maxWidth: 1400, margin: '0 auto' }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 28, flexWrap: 'wrap' }}>
-        <div style={{ background: UI.card, borderRadius: 999, padding: '10px 22px', fontWeight: 800, boxShadow: UI.shadow, letterSpacing: 0.5 }}>
-          🖨️ ПЕЧАТНИК
-        </div>
-        <nav style={{ display: 'flex', gap: 4, background: UI.card, borderRadius: 999, padding: 6, boxShadow: UI.shadow }}>
+    <div style={{ minHeight: '100vh', padding: isMobile ? '12px 12px 32px' : '20px 28px 40px', maxWidth: 1400, margin: '0 auto' }}>
+      <header style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16, marginBottom: isMobile ? 16 : 28, flexWrap: 'wrap' }}>
+        {!isMobile && (
+          <div style={{ background: UI.card, borderRadius: 999, padding: '10px 22px', fontWeight: 800, boxShadow: UI.shadow, letterSpacing: 0.5 }}>
+            🖨️ ПЕЧАТНИК
+          </div>
+        )}
+        <nav style={{
+          display: 'flex', gap: 4, background: UI.card, borderRadius: 999, padding: 6, boxShadow: UI.shadow,
+          overflowX: 'auto', maxWidth: '100%', WebkitOverflowScrolling: 'touch',
+          order: isMobile ? 2 : 0, width: isMobile ? '100%' : 'auto',
+        }}>
           {visibleTabs.map(t => (
             <button key={t.key} onClick={() => setTab(t.key)} style={{
               border: 'none', borderRadius: 999, padding: '9px 18px', fontSize: 14, fontWeight: 600,
               background: tab === t.key ? UI.dark : 'transparent',
               color: tab === t.key ? '#fff' : UI.dark,
-              transition: 'background .15s',
+              transition: 'background .15s', whiteSpace: 'nowrap', flexShrink: 0,
             }}>{t.label}</button>
           ))}
         </nav>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ marginLeft: isMobile ? 0 : 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {isMobile && <span style={{ fontWeight: 800, fontSize: 15, marginRight: 'auto' }}>🖨️ ПЕЧАТНИК</span>}
           {DEMO && (
             <button onClick={demoSwitchRole} title="Демо: переключить роль" style={{
-              border: 'none', background: UI.accent, borderRadius: 999, padding: '9px 16px', fontSize: 13, fontWeight: 700, boxShadow: UI.shadow,
+              border: 'none', background: UI.accent, borderRadius: 999, padding: '9px 14px', fontSize: 12.5, fontWeight: 700, boxShadow: UI.shadow,
             }}>
-              👁 демо · смотрю как {isOwner ? 'владелец' : 'сотрудник'}
+              👁 {isMobile ? (isOwner ? 'владелец' : 'сотрудник') : `демо · смотрю как ${isOwner ? 'владелец' : 'сотрудник'}`}
             </button>
           )}
-          <span style={{ display: 'flex', alignItems: 'center', gap: 8, background: UI.card, borderRadius: 999, padding: '7px 14px 7px 7px', boxShadow: UI.shadow, fontSize: 13 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8, background: UI.card, borderRadius: 999, padding: isMobile ? 4 : '7px 14px 7px 7px', boxShadow: UI.shadow, fontSize: 13 }}>
             <span style={{ width: 30, height: 30, borderRadius: '50%', background: UI.dark, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13 }}>
               {(currentUser?.name || '?')[0]}
             </span>
-            {currentUser?.name} · {ROLES[userRole]}
+            {!isMobile && <>{currentUser?.name} · {ROLES[userRole]}</>}
           </span>
           {!DEMO && (
             <button onClick={() => supabase.auth.signOut()} style={{ border: 'none', background: UI.card, borderRadius: 999, padding: '9px 16px', boxShadow: UI.shadow, fontSize: 13 }}>Выйти</button>
@@ -349,7 +358,7 @@ function LoginScreen({ showToast }) {
 
   return (
     <Center>
-      <form onSubmit={login} style={{ background: UI.card, borderRadius: UI.radius, boxShadow: UI.shadow, padding: 36, width: 360, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <form onSubmit={login} style={{ background: UI.card, borderRadius: UI.radius, boxShadow: UI.shadow, padding: 36, width: 'min(360px, 100%)', display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ fontSize: 26, fontWeight: 800, marginBottom: 6 }}>🖨️ ПЕЧАТНИК</div>
         <input style={inputStyle} type="email" placeholder="Почта" value={email} onChange={e => setEmail(e.target.value)} required />
         <input style={inputStyle} type="password" placeholder="Пароль" value={password} onChange={e => setPassword(e.target.value)} required />

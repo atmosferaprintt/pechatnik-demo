@@ -256,7 +256,7 @@ export default function Tasks({ tasks, setTasks, clients, contractors, transacti
             position: 'fixed', inset: 0, background: 'rgba(29,29,31,.45)', display: 'flex',
             alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20,
           }}>
-            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 26, padding: 28, width: 580, maxHeight: '90vh', overflowY: 'auto' }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 26, padding: 28, width: 'min(580px, 100%)', maxHeight: '90vh', overflowY: 'auto' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 6 }}>
                 <div>
                   <div style={{ fontSize: 22, fontWeight: 800 }}>{t.title}</div>

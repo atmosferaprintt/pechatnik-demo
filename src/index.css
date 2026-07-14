@@ -17,6 +17,13 @@ input, select, textarea { font-family: inherit; }
    остаются статичные цветные метки. Не включать обратно без её запроса. */
 .blink { animation: none; }
 
+/* Мобильная адаптация: инлайн-стили секций перекрываем точечно */
+@media (max-width: 767px) {
+  h1 { font-size: 26px !important; }
+  /* 16px+ на полях ввода — иначе iOS зумит страницу при фокусе */
+  input, select, textarea { font-size: 16px !important; }
+}
+
 @media print {
   body { background: #fff; }
 }

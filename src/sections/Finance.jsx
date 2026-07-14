@@ -146,7 +146,7 @@ function EmployeeView(props) {
     <div>
       <h1 style={{ fontSize: 34, fontWeight: 500, margin: '4px 0 20px' }}>Финансы</h1>
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 26, width: 420 }}>
+        <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 26, width: 'min(420px, 100%)' }}>
           {/* Мелочь одним тапом — наличные */}
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 12.5, fontWeight: 700, color: UI.muted, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>⚡ Мелочь одним тапом (нал)</div>
@@ -376,7 +376,7 @@ function OwnerView(props) {
           position: 'fixed', inset: 0, background: 'rgba(29,29,31,.45)', display: 'flex',
           alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20,
         }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 26, padding: 26, width: 440, maxHeight: '90vh', overflowY: 'auto' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 26, padding: 26, width: 'min(440px, 100%)', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
               <span style={{ fontWeight: 800, fontSize: 17 }}>Новая операция</span>
               <button onClick={() => setShowAddOp(false)} style={{ marginLeft: 'auto', border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 15 }}>✕</button>

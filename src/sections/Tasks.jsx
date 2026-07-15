@@ -22,9 +22,15 @@ function deadlineStatus(t) {
   return 'ok';
 }
 
-export default function Tasks({ tasks, setTasks, clients, contractors, transactions, setTransactions, categories, banks, currentUser, PAYMENT_METHODS, PEOPLE_COLUMNS, UI, showToast }) {
+export default function Tasks({ tasks, setTasks, clients, contractors, transactions, setTransactions, categories, banks, currentUser, PAYMENT_METHODS, PEOPLE_COLUMNS, manualDebts, setManualDebts, UI, showToast }) {
   const [openTask, setOpenTask] = useState(null);
   const [view, setView] = useState('board'); // board | debts | done
+  // Ручные должники: формы добавления человека и записи ±
+  const [newDebtorName, setNewDebtorName] = useState('');
+  const [showAddDebtor, setShowAddDebtor] = useState(false);
+  const [mdForm, setMdForm] = useState(null); // { debtId, sign: -1 | 1 }
+  const [mdWhat, setMdWhat] = useState('');
+  const [mdAmount, setMdAmount] = useState('');
   const [showPayForm, setShowPayForm] = useState(false);
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState('cash');
@@ -53,6 +59,31 @@ export default function Tasks({ tasks, setTasks, clients, contractors, transacti
       : t));
     setOpenTask(null);
     showToast(debt > 0 ? `«${task.title}» завершена → 💸 Долги (${fmt(debt)})` : `«${task.title}» завершена ✓`);
+  };
+
+  // Ручные должники: баланс = сумма записей (минус — взял, плюс — оплатил)
+  const mdBalance = (d) => d.entries.reduce((s, e) => s + e.amount, 0);
+  const mdTotal = manualDebts.reduce((s, d) => s + Math.min(0, mdBalance(d)), 0);
+
+  const addDebtor = () => {
+    if (!newDebtorName.trim()) { showToast('Укажи имя', 'error'); return; }
+    setManualDebts(prev => [...prev, { id: Math.max(0, ...prev.map(d => d.id)) + 1, name: newDebtorName.trim(), entries: [] }]);
+    setNewDebtorName(''); setShowAddDebtor(false);
+    showToast('Должник добавлен ✓');
+  };
+
+  const addDebtEntry = (d) => {
+    if (!+mdAmount) { showToast('Укажи сумму', 'error'); return; }
+    setManualDebts(prev => prev.map(x => x.id === d.id
+      ? { ...x, entries: [...x.entries, { date: TODAY, what: mdWhat.trim() || (mdForm.sign > 0 ? 'оплата' : ''), amount: mdForm.sign * Math.abs(+mdAmount) }] }
+      : x));
+    setMdForm(null); setMdWhat(''); setMdAmount('');
+    showToast(mdForm.sign > 0 ? 'Оплата записана ✓' : 'Записано в долг ✓');
+  };
+
+  const removeDebtor = (d) => {
+    setManualDebts(prev => prev.filter(x => x.id !== d.id));
+    showToast(`${d.name} — убрана из должников`);
   };
 
   const reopenTask = (task) => {
@@ -174,8 +205,82 @@ export default function Tasks({ tasks, setTasks, clients, contractors, transacti
             </div>
           ))}
           {!(view === 'debts' ? debtTasks : doneTasks).length && (
-            <div style={{ color: UI.muted, fontSize: 14 }}>{view === 'debts' ? 'Долгов нет 🎉' : 'Пока пусто'}</div>
+            <div style={{ color: UI.muted, fontSize: 14 }}>{view === 'debts' ? 'По задачам долгов нет 🎉' : 'Пока пусто'}</div>
           )}
+        </div>
+      )}
+
+      {/* Ручные должники — «как депозиты наоборот»: берут по мелочи, оплачивают разово */}
+      {view === 'debts' && (
+        <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 24, maxWidth: 860, marginTop: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <span style={{ fontWeight: 800 }}>🧾 Должники по мелочи</span>
+            {mdTotal < 0 && <span style={{ background: '#c0392b', color: '#fff', borderRadius: 999, padding: '3px 12px', fontSize: 12.5, fontWeight: 700 }}>всего {fmt(-mdTotal)}</span>}
+            <button onClick={() => setShowAddDebtor(v => !v)} style={{
+              marginLeft: 'auto', border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '8px 16px', fontWeight: 700, fontSize: 13,
+            }}>+ Добавить человека</button>
+          </div>
+          <div style={{ color: UI.muted, fontSize: 13, marginBottom: 14 }}>Берут по мелочи (−), потом оплачивают разово (+). Виден баланс по каждому.</div>
+
+          {showAddDebtor && (
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+              <input value={newDebtorName} onChange={e => setNewDebtorName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addDebtor()}
+                placeholder="Имя (Зайнаб, соседний салон…)" style={{
+                  flex: 1, padding: '11px 16px', borderRadius: 999, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 14, outline: 'none', minWidth: 0,
+                }} />
+              <button onClick={addDebtor} style={{ border: 'none', background: UI.accent, borderRadius: 999, padding: '0 20px', fontWeight: 800, fontSize: 13 }}>ОК</button>
+            </div>
+          )}
+
+          {manualDebts.map(d => {
+            const bal = mdBalance(d);
+            return (
+              <div key={d.id} style={{ background: UI.soft, borderRadius: 18, padding: '14px 16px', marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                  <span style={{ fontWeight: 800, fontSize: 14.5 }}>{d.name}</span>
+                  {bal < 0
+                    ? <span style={{ background: '#c0392b', color: '#fff', borderRadius: 999, padding: '3px 12px', fontSize: 12.5, fontWeight: 700 }}>должна {fmt(-bal)}</span>
+                    : <span style={{ background: 'rgba(247,214,74,.5)', borderRadius: 999, padding: '3px 12px', fontSize: 12.5, fontWeight: 700 }}>✓ рассчиталась</span>}
+                  {bal >= 0 && d.entries.length > 0 && (
+                    <button onClick={() => removeDebtor(d)} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', color: UI.muted, fontSize: 12.5, cursor: 'pointer' }}>убрать из списка ✕</button>
+                  )}
+                </div>
+
+                {d.entries.map((e, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'baseline', padding: '6px 0', borderBottom: `1px solid ${UI.line}`, fontSize: 13.5 }}>
+                    <span style={{ color: UI.muted, fontSize: 12.5, width: 44, flexShrink: 0 }}>{e.date.slice(8, 10)}.{e.date.slice(5, 7)}</span>
+                    <span>{e.what}</span>
+                    <span style={{ marginLeft: 'auto', fontWeight: 700, color: e.amount < 0 ? '#c0392b' : UI.dark }}>
+                      {e.amount < 0 ? '−' : '+'}{fmt(Math.abs(e.amount)).replace(' ₽', '')} ₽
+                    </span>
+                  </div>
+                ))}
+
+                {mdForm?.debtId === d.id ? (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                    <input value={mdWhat} onChange={e => setMdWhat(e.target.value)} placeholder={mdForm.sign > 0 ? 'Комментарий (оплата)' : 'Что взяла (ксерокс…)'} style={{
+                      flex: 1.3, padding: '10px 14px', borderRadius: 12, border: `1px solid ${UI.line}`, background: '#fff', fontSize: 13, outline: 'none', minWidth: 140,
+                    }} />
+                    <input value={mdAmount} onChange={e => setMdAmount(e.target.value)} type="number" placeholder="Сумма" style={{
+                      width: 100, padding: '10px 14px', borderRadius: 12, border: `1px solid ${UI.line}`, background: '#fff', fontSize: 13, outline: 'none',
+                    }} />
+                    <button onClick={() => addDebtEntry(d)} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '0 18px', fontWeight: 800, fontSize: 13 }}>ОК</button>
+                    <button onClick={() => setMdForm(null)} style={{ border: 'none', background: '#fff', borderRadius: 999, padding: '0 14px', fontSize: 13 }}>✕</button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                    <button onClick={() => { setMdForm({ debtId: d.id, sign: -1 }); setMdWhat(''); setMdAmount(''); }} style={{
+                      border: 'none', background: 'rgba(192,57,43,.12)', color: '#c0392b', borderRadius: 999, padding: '8px 16px', fontWeight: 700, fontSize: 12.5,
+                    }}>− взяла ещё</button>
+                    <button onClick={() => { setMdForm({ debtId: d.id, sign: 1 }); setMdWhat(''); setMdAmount(''); }} style={{
+                      border: 'none', background: 'rgba(247,214,74,.4)', borderRadius: 999, padding: '8px 16px', fontWeight: 700, fontSize: 12.5,
+                    }}>+ оплатила</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {!manualDebts.length && <div style={{ color: UI.muted, fontSize: 14 }}>Ручных должников нет</div>}
         </div>
       )}
 

@@ -12,15 +12,17 @@ export default function Finance(props) {
 const fmt = (n) => (n || 0).toLocaleString('ru-RU');
 
 // ---------- Общая форма записи операции ----------
-// У дохода можно (необязательно) привязать задачу — «менеджер связывает приход с задачей».
-function EntryForm({ categories, banks, tasks, PAYMENT_METHODS, UI, currentUser, isOwner, showToast, onSave }) {
+// У дохода: привязка к задаче (или создание новой задачи на месте) и разбивка суммы
+// на несколько статей дохода — просьбы Кристи от 2026-07-15.
+function EntryForm({ categories, banks, tasks, setTasks, clients, transactions, PAYMENT_METHODS, UI, currentUser, isOwner, showToast, onSave }) {
   const [type, setType] = useState('income');
   const [scope, setScope] = useState('work'); // для расходов владельца: work | personal
-  const [categoryId, setCategoryId] = useState('');
-  const [amount, setAmount] = useState('');
+  const [rows, setRows] = useState([{ cat: '', sum: '' }]); // статьи: доход можно разбить на несколько
   const [method, setMethod] = useState('cash');
   const [bankId, setBankId] = useState('');
   const [taskId, setTaskId] = useState('');
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskClient, setNewTaskClient] = useState('');
   const [comment, setComment] = useState('');
 
   // Сотруднику — только доходные и общие расходные категории.
@@ -32,19 +34,44 @@ function EntryForm({ categories, banks, tasks, PAYMENT_METHODS, UI, currentUser,
       ? c.kind === 'expense_personal'
       : c.kind === 'expense_shared' || c.kind === 'expense_work';
   });
-  const openTasks = tasks.filter(t => t.assignee !== 'Сборка');
+  const openTasks = tasks.filter(t => t.assignee !== 'Сборка' && !t.done);
 
   const kindLabel = { expense_shared: '', expense_work: ' · 🔒 рабочие', expense_personal: '' };
 
+  const activeRows = type === 'income' ? rows : rows.slice(0, 1);
+  const total = activeRows.reduce((s, r) => s + (+r.sum || 0), 0);
+  const setRow = (i, patch) => setRows(prev => prev.map((r, idx) => idx === i ? { ...r, ...patch } : r));
+
+  const resetForm = () => {
+    setRows([{ cat: '', sum: '' }]);
+    setComment(''); setTaskId(''); setNewTaskTitle(''); setNewTaskClient('');
+  };
+
   const save = () => {
-    if (!categoryId || !amount) { showToast('Заполни категорию и сумму', 'error'); return; }
-    onSave({
-      id: Date.now(), op_date: '2026-07-14', type, category_id: +categoryId, amount: +amount,
+    const filled = activeRows.filter(r => r.cat && +r.sum > 0);
+    if (!filled.length || filled.length !== activeRows.length) { showToast('Заполни категорию и сумму в каждой статье', 'error'); return; }
+
+    // «➕ Новая задача» из привязки — создаём задачу на месте
+    let linkTaskId = type === 'income' && taskId && taskId !== '__new' ? +taskId : null;
+    if (type === 'income' && taskId === '__new') {
+      if (!newTaskTitle.trim()) { showToast('Укажи название новой задачи', 'error'); return; }
+      linkTaskId = Math.max(0, ...tasks.map(t => t.id)) + 1;
+      setTasks(prev => [...prev, {
+        id: linkTaskId, title: newTaskTitle.trim(), client_id: newTaskClient ? +newTaskClient : null,
+        stage: 'Новая', amount: total, deadline: null, assignee: currentUser.name,
+        created_at: new Date().toISOString().slice(0, 10), description: comment,
+        log: [{ who: currentUser.name, action: 'приняла (создана из оплаты)', time: new Date().toTimeString().slice(0, 5) }],
+      }]);
+    }
+
+    const time = new Date().toTimeString().slice(0, 5);
+    const base = Math.max(0, ...transactions.map(t => t.id));
+    onSave(filled.map((r, i) => ({
+      id: base + i + 1, op_date: '2026-07-14', type, category_id: +r.cat, amount: +r.sum,
       payment_method: method, bank_id: method === 'transfer' ? +bankId || null : null,
-      task_id: type === 'income' && taskId ? +taskId : null,
-      created_by: currentUser.name, comment, time: new Date().toTimeString().slice(0, 5),
-    });
-    setAmount(''); setComment(''); setCategoryId(''); setTaskId('');
+      task_id: linkTaskId, created_by: currentUser.name, comment, time,
+    })));
+    resetForm();
   };
 
   const input = {
@@ -56,7 +83,7 @@ function EntryForm({ categories, banks, tasks, PAYMENT_METHODS, UI, currentUser,
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', background: UI.soft, borderRadius: 999, padding: 5 }}>
         {[['income', '💰 Доход'], ['expense', '💸 Расход']].map(([k, l]) => (
-          <button key={k} onClick={() => { setType(k); setCategoryId(''); }} style={{
+          <button key={k} onClick={() => { setType(k); setRows([{ cat: '', sum: '' }]); }} style={{
             flex: 1, border: 'none', borderRadius: 999, padding: '10px 0', fontWeight: 700, fontSize: 14,
             background: type === k ? UI.dark : 'transparent', color: type === k ? '#fff' : UI.dark,
           }}>{l}</button>
@@ -67,7 +94,7 @@ function EntryForm({ categories, banks, tasks, PAYMENT_METHODS, UI, currentUser,
       {isOwner && type === 'expense' && (
         <div style={{ display: 'flex', background: UI.soft, borderRadius: 999, padding: 4 }}>
           {[['work', '🏭 Рабочий'], ['personal', '🔒 Личный']].map(([k, l]) => (
-            <button key={k} onClick={() => { setScope(k); setCategoryId(''); }} style={{
+            <button key={k} onClick={() => { setScope(k); setRows([{ cat: '', sum: '' }]); }} style={{
               flex: 1, border: 'none', borderRadius: 999, padding: '8px 0', fontWeight: 700, fontSize: 13,
               background: scope === k ? (k === 'personal' ? UI.accent : UI.dark) : 'transparent',
               color: scope === k && k !== 'personal' ? '#fff' : UI.dark,
@@ -76,13 +103,30 @@ function EntryForm({ categories, banks, tasks, PAYMENT_METHODS, UI, currentUser,
         </div>
       )}
 
-      <select style={input} value={categoryId} onChange={e => setCategoryId(e.target.value)}>
-        <option value="">Категория…</option>
-        {visibleCats.map(c => <option key={c.id} value={c.id}>{c.name}{kindLabel[c.kind] || ''}</option>)}
-      </select>
-
-      <input style={{ ...input, fontSize: 22, fontWeight: 700 }} type="number" placeholder="Сумма, ₽"
-        value={amount} onChange={e => setAmount(e.target.value)} />
+      {/* Статьи: у дохода одну сумму можно разбить на несколько категорий */}
+      {activeRows.map((r, i) => (
+        <div key={i} style={{ display: 'flex', gap: 8 }}>
+          <select style={{ ...input, flex: 1.4, minWidth: 0 }} value={r.cat} onChange={e => setRow(i, { cat: e.target.value })}>
+            <option value="">Категория…</option>
+            {visibleCats.map(c => <option key={c.id} value={c.id}>{c.name}{kindLabel[c.kind] || ''}</option>)}
+          </select>
+          <input style={{ ...input, flex: 1, minWidth: 0, fontSize: 18, fontWeight: 700 }} type="number" placeholder="Сумма, ₽"
+            value={r.sum} onChange={e => setRow(i, { sum: e.target.value })} />
+          {activeRows.length > 1 && (
+            <button onClick={() => setRows(prev => prev.filter((_, idx) => idx !== i))} style={{
+              border: 'none', background: UI.soft, borderRadius: 999, width: 38, flexShrink: 0, fontSize: 14,
+            }}>✕</button>
+          )}
+        </div>
+      ))}
+      {type === 'income' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button onClick={() => setRows(prev => [...prev, { cat: '', sum: '' }])} style={{
+            border: `1.5px dashed ${UI.muted}`, background: 'transparent', borderRadius: 999, padding: '7px 14px', fontSize: 12.5, color: UI.muted, fontWeight: 600,
+          }}>+ разбить на ещё одну статью</button>
+          {activeRows.length > 1 && <span style={{ marginLeft: 'auto', fontWeight: 800, fontSize: 15 }}>= {fmt(total)} ₽</span>}
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {PAYMENT_METHODS.map(m => (
@@ -101,10 +145,23 @@ function EntryForm({ categories, banks, tasks, PAYMENT_METHODS, UI, currentUser,
       )}
 
       {type === 'income' && (
-        <select style={input} value={taskId} onChange={e => setTaskId(e.target.value)}>
-          <option value="">🔗 Привязать к задаче (необязательно)…</option>
-          {openTasks.map(t => <option key={t.id} value={t.id}>{t.title} · {fmt(t.amount)} ₽</option>)}
-        </select>
+        <>
+          <select style={input} value={taskId} onChange={e => setTaskId(e.target.value)}>
+            <option value="">🔗 Привязать к задаче (необязательно)…</option>
+            <option value="__new">➕ Создать новую задачу…</option>
+            {openTasks.map(t => <option key={t.id} value={t.id}>{t.title} · {fmt(t.amount)} ₽</option>)}
+          </select>
+          {taskId === '__new' && (
+            <div style={{ background: 'rgba(247,214,74,.15)', border: `1.5px solid ${UI.accent}`, borderRadius: 16, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <input style={input} placeholder="Название новой задачи (визитки 500 шт…)" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} />
+              <select style={input} value={newTaskClient} onChange={e => setNewTaskClient(e.target.value)}>
+                <option value="">Клиент (необязательно)…</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <div style={{ color: UI.muted, fontSize: 12 }}>Задача появится в твоём задачнике, оплата привяжется к ней сразу</div>
+            </div>
+          )}
+        </>
       )}
 
       <input style={input} placeholder="Комментарий (необязательно)" value={comment} onChange={e => setComment(e.target.value)} />
@@ -160,7 +217,10 @@ function EmployeeView(props) {
             </div>
           </div>
           <div style={{ borderTop: `1px solid ${UI.line}`, marginBottom: 16 }} />
-          <EntryForm {...props} onSave={(rec) => { setTransactions(prev => [...prev, rec]); showToast('Записано ✓'); }} />
+          <EntryForm {...props} onSave={(recs) => {
+            setTransactions(prev => [...prev, ...recs]);
+            showToast(recs.length > 1 ? `Записано ${recs.length} статьями ✓` : 'Записано ✓');
+          }} />
         </div>
 
         <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 26, flex: 1, minWidth: 320 }}>
@@ -381,10 +441,10 @@ function OwnerView(props) {
               <span style={{ fontWeight: 800, fontSize: 17 }}>Новая операция</span>
               <button onClick={() => setShowAddOp(false)} style={{ marginLeft: 'auto', border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 15 }}>✕</button>
             </div>
-            <EntryForm {...props} isOwner onSave={(rec) => {
-              setTransactions(prev => [...prev, rec]);
+            <EntryForm {...props} isOwner onSave={(recs) => {
+              setTransactions(prev => [...prev, ...recs]);
               setShowAddOp(false);
-              showToast('Записано ✓');
+              showToast(recs.length > 1 ? `Записано ${recs.length} статьями ✓` : 'Записано ✓');
             }} />
           </div>
         </div>

@@ -10,6 +10,7 @@ import Tasks from './sections/Tasks.jsx';
 import Clients from './sections/Clients.jsx';
 import Contractors from './sections/Contractors.jsx';
 import Deposits from './sections/Deposits.jsx';
+import Supply from './sections/Supply.jsx';
 import Finance from './sections/Finance.jsx';
 import Analytics from './sections/Analytics.jsx';
 import Settings from './sections/Settings.jsx';
@@ -53,6 +54,7 @@ const TABS = [
   { key: 'clients', label: 'Клиенты', roles: ['owner', 'employee'] },
   { key: 'contractors', label: 'Контрагенты', roles: ['owner', 'employee'] },
   { key: 'deposits', label: 'Депозиты', roles: ['owner', 'employee'] },
+  { key: 'supply', label: 'Поставка', roles: ['owner', 'employee'] },
   { key: 'finance', label: 'Финансы', roles: ['owner', 'employee'] },
   { key: 'analytics', label: 'Аналитика', roles: ['owner'] },
   { key: 'settings', label: 'Настройки', roles: ['owner'] },
@@ -88,6 +90,25 @@ const DEMO_TASKS = [
   // Завершённые: с долгом — висят в разделе «Долги», оплаченные — в «Завершённых»
   { id: 8, title: 'Календари А3 ×50', client_id: 4, stage: 'Готово', amount: 6000, deadline: '2026-07-10', assignee: 'Сборка', created_at: '2026-07-05', description: 'Выдали 10.07, обещал перевести.', done: true, log: [{ who: 'Влада', action: 'приняла', time: '05.07 10:00' }, { who: 'Влада', action: '✓ завершила · выдано клиенту', time: '10.07 15:20' }] },
   { id: 9, title: 'Листовки А6 1000 шт', client_id: 3, stage: 'Готово', amount: 3800, deadline: '2026-07-08', assignee: 'Сборка', created_at: '2026-07-03', description: '', done: true, log: [{ who: 'Алена', action: '✓ завершила', time: '08.07 12:00' }] },
+];
+
+// Ручные должники — «как депозиты наоборот»: берут по мелочи (минус), потом разово оплачивают (плюс)
+const DEMO_MANUAL_DEBTS = [
+  {
+    id: 1, name: 'Зайнаб (соседний салон)',
+    entries: [
+      { date: '2026-07-10', what: 'ксерокс документов', amount: -200 },
+      { date: '2026-07-12', what: 'фото 3×4', amount: -350 },
+      { date: '2026-07-13', what: 'оплатила часть', amount: 300 },
+    ],
+  },
+];
+
+// Список закупок «Поставка» — что заканчивается, ручная вбивка без учёта остатков
+const DEMO_SUPPLY = [
+  { id: 1, text: 'Сувенирка: металл под сублимацию заканчивается', author: 'Алена', date: '2026-07-14', bought: false },
+  { id: 2, text: 'Бумага А4 — осталось 2 пачки', author: 'Настя', date: '2026-07-13', bought: false },
+  { id: 3, text: 'Атласная лента 25 мм белая', author: 'Влада', date: '2026-07-12', bought: true },
 ];
 
 // Депозиты — бюджетники вносят сумму и расходуют частями
@@ -197,6 +218,8 @@ export default function App() {
   const [contractors, setContractors] = useState(DEMO ? DEMO_CONTRACTORS : []);
   const [contractorTasks, setContractorTasks] = useState(DEMO ? DEMO_CONTRACTOR_TASKS : []);
   const [deposits, setDeposits] = useState(DEMO ? DEMO_DEPOSITS : []);
+  const [manualDebts, setManualDebts] = useState(DEMO ? DEMO_MANUAL_DEBTS : []);
+  const [supply, setSupply] = useState(DEMO ? DEMO_SUPPLY : []);
   const [transactions, setTransactions] = useState(DEMO ? DEMO_TRANSACTIONS : []);
   const [loading, setLoading] = useState(!DEMO);
 
@@ -260,6 +283,7 @@ export default function App() {
   const sectionProps = {
     supabase, currentUser, userRole, isOwner, showToast, onUpdate: loadAll, loadAllRows,
     clients, setClients, tasks, categories, banks, transactions, contractors, contractorTasks, deposits, setDeposits,
+    manualDebts, setManualDebts, supply, setSupply,
     setTasks, setTransactions, setContractors, setContractorTasks, CONTRACTOR_STAGES, PEOPLE_COLUMNS,
     demoUsers: DEMO_USERS, demoBankRows: DEMO_BANK_ROWS,
     loading, UI, STAGES, PAYMENT_METHODS, DEMO, isMobile,
@@ -314,6 +338,7 @@ export default function App() {
         {tab === 'clients' && <Clients {...sectionProps} />}
         {tab === 'contractors' && <Contractors {...sectionProps} />}
         {tab === 'deposits' && <Deposits {...sectionProps} />}
+        {tab === 'supply' && <Supply {...sectionProps} />}
         {tab === 'finance' && <Finance {...sectionProps} />}
         {tab === 'analytics' && isOwner && <Analytics {...sectionProps} />}
         {tab === 'settings' && isOwner && <Settings {...sectionProps} />}

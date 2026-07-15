@@ -1,4 +1,6 @@
-// Раздел «Задачи» — канбан ПО ЛЮДЯМ (просьба Кристи): у каждого свой задачник + общая «Сборка».
+// Раздел «Задачи» — канбан ПО ЛЮДЯМ (просьба Кристи): у каждого свой задачник.
+// «Сборку» убрали 2026-07-16: готовность = бейдж «готово к выдаче» + «✓ Завершить»,
+// сборка у подрядчиков отображается в Контрагентах.
 // Задачи видны всем и передаются от человека к человеку; действия отмечаются бейджами с историей.
 // Клик по карточке → подробности: клиент, оплата, сроки, состав заказа, история действий.
 // Заглушка на демо-данных.
@@ -14,9 +16,11 @@ const NOW = () => `${dm(TODAY)} ${new Date().toTimeString().slice(0, 5)}`;
 // Быстрые отметки действий на задаче
 const ACTION_PRESETS = ['приняла', 'подготовила к печати', 'распечатала', 'постпечатка', 'готово к выдаче'];
 
-// Статус срока: overdue — просрочен, soon — сегодня/завтра. В «Сборке» (готово к выдаче) не тревожим.
+// Статус срока: overdue — просрочен, soon — сегодня/завтра.
+// Не тревожим завершённые и те, где последняя отметка — «готово к выдаче» (работа сделана, ждём клиента).
 function deadlineStatus(t) {
-  if (!t.deadline || t.assignee === 'Сборка') return 'ok';
+  const last = t.log?.length ? t.log[t.log.length - 1].action : '';
+  if (!t.deadline || t.done || last.includes('готово к выдаче')) return 'ok';
   if (t.deadline < TODAY) return 'overdue';
   if (t.deadline <= TOMORROW) return 'soon';
   return 'ok';
@@ -93,7 +97,7 @@ export default function Tasks({ tasks, setTasks, clients, contractors, transacti
     showToast(`«${task.title}» снова в работе ↩`);
   };
 
-  // Передать задачу другому человеку (или в Сборку) — с записью в историю
+  // Передать задачу другому человеку — с записью в историю
   const transfer = (task, to) => {
     if (!to || to === task.assignee) return;
     setTasks(prev => prev.map(t => t.id === task.id
@@ -287,17 +291,16 @@ export default function Tasks({ tasks, setTasks, clients, contractors, transacti
       {view === 'board' && (
       <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', overflowX: 'auto', paddingBottom: 8 }}>
         {PEOPLE_COLUMNS.map(person => {
-          const isAssembly = person === 'Сборка';
           const inCol = activeTasks.filter(t => t.assignee === person);
           const sum = inCol.reduce((s, t) => s + (t.amount || 0), 0);
           return (
-            <div key={person} style={{ minWidth: 230, flex: 1, background: isAssembly ? '#f0ecdf' : UI.soft, borderRadius: 22, padding: 12 }}>
+            <div key={person} style={{ minWidth: 230, flex: 1, background: UI.soft, borderRadius: 22, padding: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '0 2px' }}>
                 <span style={{
-                  width: 30, height: 30, borderRadius: '50%', background: isAssembly ? UI.accent : UI.dark,
-                  color: isAssembly ? UI.dark : '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  width: 30, height: 30, borderRadius: '50%', background: UI.dark, color: '#fff',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                   fontWeight: 800, fontSize: 13, flexShrink: 0,
-                }}>{isAssembly ? '📦' : person[0]}</span>
+                }}>{person[0]}</span>
                 <span style={{ fontWeight: 800, fontSize: 14 }}>{person}</span>
                 <span style={{ background: UI.dark, color: '#fff', borderRadius: 999, fontSize: 11.5, fontWeight: 700, padding: '2px 8px' }}>{inCol.length}</span>
                 {sum > 0 && <span style={{ marginLeft: 'auto', color: UI.muted, fontSize: 11.5, fontWeight: 600 }}>{fmt(sum)}</span>}
@@ -334,7 +337,7 @@ export default function Tasks({ tasks, setTasks, clients, contractors, transacti
                         {PEOPLE_COLUMNS.filter(p => p !== person).map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
                       <button title="Завершить задачу" onClick={(e) => finishTask(t, e)} style={{
-                        border: 'none', background: isAssembly ? UI.accent : UI.soft, borderRadius: 999,
+                        border: 'none', background: UI.soft, borderRadius: 999,
                         padding: '5px 12px', fontSize: 12.5, fontWeight: 800, flexShrink: 0,
                       }}>✓</button>
                     </div>
@@ -377,7 +380,7 @@ export default function Tasks({ tasks, setTasks, clients, contractors, transacti
                   <button key={p} onClick={() => transfer(t, p)} style={{
                     border: 'none', borderRadius: 999, padding: '8px 14px', fontSize: 12.5, fontWeight: 700,
                     background: t.assignee === p ? UI.dark : UI.soft, color: t.assignee === p ? '#fff' : UI.dark,
-                  }}>{p === 'Сборка' ? '📦 Сборка' : p}</button>
+                  }}>{p}</button>
                 ))}
               </div>
 

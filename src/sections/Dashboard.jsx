@@ -17,7 +17,7 @@ export default function Dashboard({ transactions, tasks, clients, demoBankRows, 
     .sort((a, b) => b.debt - a.debt);
   const totalDebt = debtors.reduce((s, t) => s + t.debt, 0);
 
-  const burning = tasks.filter(t => t.assignee !== 'Сборка' && t.deadline && t.deadline <= TOMORROW);
+  const burning = tasks.filter(t => !t.done && t.deadline && t.deadline <= TOMORROW);
   const unmatched = demoBankRows.filter(r => !r.matched);
   const clientName = (id) => clients.find(c => c.id === id)?.name?.split('·')[0]?.trim() || '—';
 

@@ -34,7 +34,7 @@ function EntryForm({ categories, banks, tasks, setTasks, clients, transactions, 
       ? c.kind === 'expense_personal'
       : c.kind === 'expense_shared' || c.kind === 'expense_work';
   });
-  const openTasks = tasks.filter(t => t.assignee !== 'Сборка' && !t.done);
+  const openTasks = tasks.filter(t => !t.done);
 
   const kindLabel = { expense_shared: '', expense_work: ' · 🔒 рабочие', expense_personal: '' };
 

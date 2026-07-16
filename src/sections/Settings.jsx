@@ -3,6 +3,7 @@
 // уволить/вернуть. Новый сотрудник = колонка в Задачах; переименование переносит задачник.
 // В проде это RPC admin_create_user / admin_update_user (только для владельца).
 import { useState } from 'react';
+import I from '../Icon.jsx';
 
 export default function Settings({ categories, banks, users, tasks, db, UI, showToast }) {
   const [showAddUser, setShowAddUser] = useState(false);
@@ -35,10 +36,10 @@ export default function Settings({ categories, banks, users, tasks, db, UI, show
   const [ePass, setEPass] = useState('');
 
   const kinds = [
-    ['income', '💰 Категории доходов'],
-    ['expense_shared', '💸 Расходы (видят сотрудники)'],
-    ['expense_work', '🔒 Рабочие расходы (только я)'],
-    ['expense_personal', '🔒 Личные расходы (только я)'],
+    ['income', 'Категории доходов', 'income'],
+    ['expense_shared', 'Расходы (видят сотрудники)', 'expense'],
+    ['expense_work', 'Рабочие расходы (только я)', 'lock'],
+    ['expense_personal', 'Личные расходы (только я)', 'lock'],
   ];
 
   const addUser = async () => {
@@ -82,8 +83,8 @@ export default function Settings({ categories, banks, users, tasks, db, UI, show
       <h1 style={{ fontSize: 34, fontWeight: 500, margin: '4px 0 20px' }}>Настройки</h1>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20 }}>
 
-        {kinds.map(([kind, title]) => (
-          <Card key={kind} title={title} UI={UI}>
+        {kinds.map(([kind, title, icon]) => (
+          <Card key={kind} title={<><I n={icon} size={15} /> {title}</>} UI={UI}>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {categories.filter(c => c.kind === kind).map(c => (
                 <span key={c.id} style={{ background: UI.soft, borderRadius: 999, padding: '7px 6px 7px 16px', fontSize: 13.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -109,7 +110,7 @@ export default function Settings({ categories, banks, users, tasks, db, UI, show
           </Card>
         ))}
 
-        <Card title="🏦 Карты для переводов" UI={UI}>
+        <Card title={<><I n="card" size={15} /> Карты для переводов</>} UI={UI}>
           {banks.map(b => (
             <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
               <span style={{ fontWeight: 700 }}>{b.name}</span>
@@ -133,7 +134,7 @@ export default function Settings({ categories, banks, users, tasks, db, UI, show
           )}
         </Card>
 
-        <Card title="👥 Пользователи" UI={UI}>
+        <Card title={<><I n="users" size={15} /> Пользователи</>} UI={UI}>
           {users.map(u => (
             <div key={u.id} style={{ borderBottom: `1px solid ${UI.line}`, padding: '8px 0' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, opacity: u.is_active === false ? 0.45 : 1 }}>
@@ -150,7 +151,7 @@ export default function Settings({ categories, banks, users, tasks, db, UI, show
                 <button onClick={() => editId === u.id ? setEditId(null) : startEdit(u)} title="Редактировать" style={{
                   border: 'none', background: editId === u.id ? UI.dark : UI.soft, color: editId === u.id ? '#fff' : UI.dark,
                   borderRadius: 999, padding: '5px 10px', fontSize: 12.5, cursor: 'pointer', flexShrink: 0,
-                }}>✎</button>
+                }}><I n="pencil" size={13} /></button>
               </div>
 
               {editId === u.id && (

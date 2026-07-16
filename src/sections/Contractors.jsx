@@ -3,6 +3,7 @@
 //   «Задачи» — ОТДЕЛЬНЫЙ канбан задач контрагентам (не смешивается с клиентскими задачами)
 // Заглушка на демо-данных.
 import { useState } from 'react';
+import I from '../Icon.jsx';
 
 const fmt = (n) => (n || 0).toLocaleString('ru-RU');
 const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
@@ -19,7 +20,7 @@ export default function Contractors(props) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0 20px', flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: 34, fontWeight: 500, margin: 0 }}>Контрагенты</h1>
         <div style={{ display: 'flex', background: '#fff', borderRadius: 999, padding: 5, boxShadow: UI.shadow }}>
-          {[['board', '📋 Задачи'], ['list', `🏭 Подрядчики · ${contractors.length}`]].map(([k, l]) => (
+          {[['board', 'Задачи'], ['list', `Подрядчики · ${contractors.length}`]].map(([k, l]) => (
             <button key={k} onClick={() => setView(k)} style={{
               border: 'none', borderRadius: 999, padding: '9px 18px', fontSize: 13.5, fontWeight: 700,
               background: view === k ? UI.dark : 'transparent', color: view === k ? '#fff' : UI.dark,
@@ -27,7 +28,7 @@ export default function Contractors(props) {
           ))}
         </div>
         <input value={query} onChange={e => setQuery(e.target.value)}
-          placeholder={view === 'board' ? '🔍 Поиск по задачам' : '🔍 Поиск по подрядчикам'} style={{
+          placeholder={view === 'board' ? 'Поиск по задачам' : 'Поиск по подрядчикам'} style={{
             marginLeft: 'auto', width: 'min(240px, 100%)', padding: '10px 18px', borderRadius: 999, border: 'none',
             background: '#fff', boxShadow: UI.shadow, fontSize: 13.5, outline: 'none',
           }} />
@@ -67,10 +68,10 @@ function ContractorBoard({ contractors, contractorTasks, db, CONTRACTOR_STAGES, 
   };
 
   const dlChip = (t) => {
-    if (!t.deadline || t.stage === 'Забрали') return t.deadline ? { text: `⏰ ${dm(t.deadline)}`, style: { background: UI.soft } } : null;
-    if (t.deadline < TODAY) return { text: `⏰ просрочено ${dm(t.deadline)}`, style: { background: '#c0392b', color: '#fff' }, blink: true };
-    if (t.deadline <= TOMORROW) return { text: `⏰ горит · ${dm(t.deadline)}`, style: { background: UI.accent } };
-    return { text: `⏰ ${dm(t.deadline)}`, style: { background: UI.soft } };
+    if (!t.deadline || t.stage === 'Забрали') return t.deadline ? { text: dm(t.deadline), style: { background: UI.soft } } : null;
+    if (t.deadline < TODAY) return { text: `просрочено ${dm(t.deadline)}`, style: { background: '#c0392b', color: '#fff' }, blink: true };
+    if (t.deadline <= TOMORROW) return { text: `горит · ${dm(t.deadline)}`, style: { background: UI.accent } };
+    return { text: dm(t.deadline), style: { background: UI.soft } };
   };
 
   const input = {
@@ -105,10 +106,10 @@ function ContractorBoard({ contractors, contractorTasks, db, CONTRACTOR_STAGES, 
                 return (
                   <div key={t.id} style={{ background: '#fff', borderRadius: 18, padding: '14px 14px 12px', marginBottom: 10, boxShadow: UI.shadow }}>
                     <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{t.title}</div>
-                    <div style={{ color: UI.muted, fontSize: 12.5, marginBottom: 10 }}>🏭 {cName(t.contractor_id)}{t.comment ? ` · ${t.comment}` : ''}</div>
+                    <div style={{ color: UI.muted, fontSize: 12.5, marginBottom: 10 }}><I n="factory" size={12} /> {cName(t.contractor_id)}{t.comment ? ` · ${t.comment}` : ''}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                       {t.amount && <span style={{ background: UI.soft, borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 700 }}>{fmt(t.amount)} ₽</span>}
-                      {dl && <span className={dl.blink ? 'blink' : undefined} style={{ ...dl.style, borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 700 }}>{dl.text}</span>}
+                      {dl && <span className={dl.blink ? 'blink' : undefined} style={{ ...dl.style, borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 700 }}><I n="clock" size={11} /> {dl.text}</span>}
                     </div>
                     <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
                       <button disabled={si === 0} onClick={(e) => move(t, -1, e)} style={{ border: 'none', background: UI.soft, borderRadius: 999, padding: '4px 14px', fontSize: 13, opacity: si === 0 ? 0.3 : 1 }}>←</button>
@@ -202,7 +203,7 @@ function ContractorList({ contractors, contractorTasks, tasks, clients, db, UI, 
                 <span style={{
                   width: 42, height: 42, borderRadius: '50%', background: UI.dark, color: '#fff',
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16,
-                }}>🏭</span>
+                }}><I n="factory" size={17} /></span>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 15 }}>{c.name}</div>
                   <div style={{ color: UI.muted, fontSize: 13 }}>{c.service || '—'}</div>
@@ -233,7 +234,7 @@ function ContractorList({ contractors, contractorTasks, tasks, clients, db, UI, 
             <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 26, padding: 28, width: 'min(560px, 100%)', maxHeight: '90vh', overflowY: 'auto' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
                 <div>
-                  <div style={{ fontSize: 20, fontWeight: 800 }}>🏭 {c.name}</div>
+                  <div style={{ fontSize: 20, fontWeight: 800 }}><I n="factory" size={18} /> {c.name}</div>
                   <div style={{ color: UI.muted, fontSize: 13.5 }}>{c.service}{c.phone ? ` · ${c.phone}` : ''}</div>
                 </div>
                 <button onClick={() => setOpenId(null)} style={{ marginLeft: 'auto', border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 15 }}>✕</button>

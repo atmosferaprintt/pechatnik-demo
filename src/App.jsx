@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import useIsMobile from './mobile/useIsMobile.js';
+import I from './Icon.jsx';
 
 import Dashboard from './sections/Dashboard.jsx';
 import Tasks from './sections/Tasks.jsx';
@@ -667,7 +668,7 @@ export default function App() {
       <header style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16, marginBottom: isMobile ? 16 : 28, flexWrap: 'wrap' }}>
         {!isMobile && (
           <div style={{ background: UI.card, borderRadius: 999, padding: '10px 22px', fontWeight: 800, boxShadow: UI.shadow, letterSpacing: 0.5 }}>
-            🖨️ ПЕЧАТНИК
+            <I n="printer" size={17} /> ПЕЧАТНИК
           </div>
         )}
         <nav style={{
@@ -685,15 +686,15 @@ export default function App() {
           ))}
         </nav>
         <div style={{ marginLeft: isMobile ? 0 : 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          {isMobile && <span style={{ fontWeight: 800, fontSize: 15, marginRight: 'auto' }}>🖨️ ПЕЧАТНИК</span>}
+          {isMobile && <span style={{ fontWeight: 800, fontSize: 15, marginRight: 'auto' }}><I n="printer" size={15} /> ПЕЧАТНИК</span>}
           {/* Кристи работает и как сотрудница: переключение режима её же аккаунта */}
           {isOwnerAccount && (
             <span style={{ display: 'flex', background: UI.card, borderRadius: 999, padding: 4, boxShadow: UI.shadow }}>
-              {[['owner', '👑'], ['employee', '🛠']].map(([m, icon]) => (
+              {[['owner', 'crown'], ['employee', 'wrench']].map(([m, ic]) => (
                 <button key={m} onClick={() => workMode !== m && toggleWorkMode()} title={m === 'owner' ? 'Режим владельца' : 'Режим сотрудника'} style={{
                   border: 'none', borderRadius: 999, padding: isMobile ? '6px 10px' : '6px 14px', fontSize: 12.5, fontWeight: 700,
                   background: workMode === m ? UI.dark : 'transparent', color: workMode === m ? '#fff' : UI.dark,
-                }}>{icon}{!isMobile && ` ${m === 'owner' ? 'владелец' : 'сотрудник'}`}</button>
+                }}><I n={ic} size={13} />{!isMobile && ` ${m === 'owner' ? 'владелец' : 'сотрудник'}`}</button>
               ))}
             </span>
           )}
@@ -701,7 +702,7 @@ export default function App() {
             <button onClick={demoSwitchRole} title="Демо: зайти под другим аккаунтом" style={{
               border: 'none', background: UI.accent, borderRadius: 999, padding: '9px 14px', fontSize: 12.5, fontWeight: 700, boxShadow: UI.shadow,
             }}>
-              👁 {isOwnerAccount ? 'Кристи' : currentUser?.name}
+              <I n="eye" size={13} /> {isOwnerAccount ? 'Кристи' : currentUser?.name}
             </button>
           )}
           <span style={{ display: 'flex', alignItems: 'center', gap: 8, background: UI.card, borderRadius: 999, padding: isMobile ? 4 : '7px 14px 7px 7px', boxShadow: UI.shadow, fontSize: 13 }}>
@@ -770,7 +771,7 @@ function LoginScreen({ showToast }) {
   return (
     <Center>
       <form onSubmit={doLogin} style={{ background: UI.card, borderRadius: UI.radius, boxShadow: UI.shadow, padding: 36, width: 'min(360px, 100%)', display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ fontSize: 26, fontWeight: 800, marginBottom: 6 }}>🖨️ ПЕЧАТНИК</div>
+        <div style={{ fontSize: 26, fontWeight: 800, marginBottom: 6 }}><I n="printer" size={24} /> ПЕЧАТНИК</div>
         <input style={inputStyle} placeholder="Логин" autoCapitalize="none" value={login} onChange={e => setLogin(e.target.value)} required />
         <input style={inputStyle} type="password" placeholder="Пароль" value={password} onChange={e => setPassword(e.target.value)} required />
         <button disabled={busy} style={{

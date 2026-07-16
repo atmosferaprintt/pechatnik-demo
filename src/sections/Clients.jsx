@@ -1,6 +1,7 @@
 // Раздел «Клиенты» — база списком + карточка клиента с историей (задачи, оплаты, долг).
 // Фильтр «должники» показывает только клиентов с незакрытыми долгами. Заглушка на демо-данных.
 import { useState } from 'react';
+import I from '../Icon.jsx';
 
 const fmt = (n) => (n || 0).toLocaleString('ru-RU');
 const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
@@ -69,11 +70,11 @@ export default function Clients({ clients, tasks, transactions, categories, db, 
         <button onClick={() => setDebtorsOnly(v => !v)} className={debtorsOnly ? undefined : undefined} style={{
           border: 'none', borderRadius: 999, padding: '9px 18px', fontSize: 13.5, fontWeight: 700,
           background: debtorsOnly ? '#c0392b' : '#fff', color: debtorsOnly ? '#fff' : UI.dark, boxShadow: UI.shadow,
-        }}>💸 Должники</button>
+        }}>Должники</button>
         <input
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="🔍 Поиск по имени, телефону, инстаграму"
+          placeholder="Поиск по имени, телефону, инстаграму"
           style={{
             marginLeft: 'auto', width: 'min(300px, 100%)', padding: '12px 20px', borderRadius: 999, border: 'none',
             background: '#fff', boxShadow: UI.shadow, fontSize: 14, outline: 'none',
@@ -135,7 +136,7 @@ export default function Clients({ clients, tasks, transactions, categories, db, 
                   </td>
                   <td style={{ ...td, fontWeight: 700 }}>
                     {c.name}
-                    {(c.prices || []).length > 0 && <span title="Есть индивидуальные цены" style={{ marginLeft: 8, background: 'rgba(247,214,74,.5)', borderRadius: 999, padding: '3px 9px', fontSize: 11.5, fontWeight: 800 }}>% цены</span>}
+                    {(c.prices || []).length > 0 && <span title="Есть индивидуальные цены" style={{ marginLeft: 8, background: 'rgba(247,214,74,.5)', borderRadius: 999, padding: '3px 9px', fontSize: 11.5, fontWeight: 800 }}><I n="percent" size={10} /> цены</span>}
                   </td>
                   <td style={td}>{c.phone}</td>
                   <td style={td}>{c.instagram ? <span style={{ background: UI.soft, borderRadius: 999, padding: '4px 12px', fontSize: 12.5 }}>{c.instagram}</span> : <span style={{ color: UI.muted }}>—</span>}</td>
@@ -154,7 +155,7 @@ export default function Clients({ clients, tasks, transactions, categories, db, 
               );
             })}
             {!filtered.length && (
-              <tr><td colSpan={7} style={{ ...td, color: UI.muted }}>{debtorsOnly ? 'Должников нет 🎉' : `Никого не нашла по «${query}»`}</td></tr>
+              <tr><td colSpan={7} style={{ ...td, color: UI.muted }}>{debtorsOnly ? 'Должников нет' : `Никого не нашла по «${query}»`}</td></tr>
             )}
           </tbody>
         </table>
@@ -190,10 +191,10 @@ export default function Clients({ clients, tasks, transactions, categories, db, 
                 <Mini label="Долг" value={debt > 0 ? `${fmt(debt)} ₽` : 'нет'} danger={debt > 0} UI={UI} />
               </div>
 
-              {c.note && <div style={{ background: UI.soft, borderRadius: 14, padding: '11px 14px', fontSize: 13.5, marginBottom: 16 }}>📝 {c.note}</div>}
+              {c.note && <div style={{ background: UI.soft, borderRadius: 14, padding: '11px 14px', fontSize: 13.5, marginBottom: 16 }}><I n="note" size={13} /> {c.note}</div>}
 
               {/* Индивидуальные цены — чтобы скидки были перед глазами, а не в переписке */}
-              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>💰 Индивидуальные цены</div>
+              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}><I n="percent" size={13} /> Индивидуальные цены</div>
               <div style={{ background: 'rgba(247,214,74,.15)', border: `1.5px solid ${UI.accent}`, borderRadius: 16, padding: '8px 14px 12px', marginBottom: 16 }}>
                 {(c.prices || []).map((p, i) => (
                   <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 0', borderBottom: `1px solid ${UI.line}`, fontSize: 13.5 }}>
@@ -232,7 +233,7 @@ export default function Clients({ clients, tasks, transactions, categories, db, 
               <div style={{ fontWeight: 800, fontSize: 14, margin: '16px 0 6px' }}>Оплаты</div>
               {cp.length ? cp.map(p => (
                 <div key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
-                  <span>💰</span>
+                  <I n="income" size={13} style={{ color: '#8a8a85' }} />
                   <span style={{ fontWeight: 600 }}>{catName(p.category_id)}</span>
                   <span style={{ color: UI.muted, fontSize: 12.5 }}>{dm(p.op_date)} · {p.created_by}</span>
                   <span style={{ marginLeft: 'auto', fontWeight: 700 }}>+{fmt(p.amount)} ₽</span>

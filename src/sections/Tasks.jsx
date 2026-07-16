@@ -5,6 +5,7 @@
 // Клик по карточке → подробности: клиент, оплата, сроки, состав заказа, история действий.
 // Заглушка на демо-данных.
 import { useState } from 'react';
+import I from '../Icon.jsx';
 
 const fmt = (n) => (n || 0).toLocaleString('ru-RU') + ' ₽';
 const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
@@ -89,7 +90,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
     const debt = taskDebt(task);
     db.updateTask(task, { done: true }, { who: currentUser.name, action: '✓ завершила' });
     setOpenTask(null);
-    showToast(debt > 0 ? `«${task.title}» выдана, долг ${fmt(debt)} → 💸 Долги` : `«${task.title}» выдана и закрыта ✓`);
+    showToast(debt > 0 ? `«${task.title}» выдана, долг ${fmt(debt)} → Долги` : `«${task.title}» выдана и закрыта ✓`);
   };
 
   // Ручные должники: баланс = сумма записей (минус — взял, плюс — оплатил)
@@ -196,10 +197,10 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
     db.addTask({
       title: t.title, description: t.description, client_id: t.client_id, contractor_id: t.contractor_id,
       amount: t.amount, parts: t.parts || [], deadline: null, assignee: currentUser.name,
-      _firstAction: 'повторный заказ 🔁',
+      _firstAction: 'повторный заказ (копия)',
     });
     setOpenTask(null);
-    showToast(`«${t.title}» скопирована к тебе 🔁`);
+    showToast(`«${t.title}» скопирована к тебе`);
   };
 
   // Чип статуса оплаты: ✓ оплачено / долг (small — компактный вариант для карточек доски)
@@ -223,17 +224,17 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
     const fs = small ? 11 : 12.5;
     if (st === 'overdue') return (
       <span className="blink" style={{ background: '#c0392b', color: '#fff', borderRadius: 999, padding: pad, fontSize: fs, fontWeight: 700 }}>
-        ⏰ проср. {dm(t.deadline)}
+        <I n="clock" size={11} /> проср. {dm(t.deadline)}
       </span>
     );
     if (st === 'soon') return (
       <span style={{ background: UI.accent, borderRadius: 999, padding: pad, fontSize: fs, fontWeight: 700 }}>
-        ⏰ {small ? dm(t.deadline) : `горит · ${dm(t.deadline)}`}
+        <I n="clock" size={11} /> {small ? dm(t.deadline) : `горит · ${dm(t.deadline)}`}
       </span>
     );
     if (!t.deadline) return null;
     return (
-      <span style={{ background: UI.soft, borderRadius: 999, padding: pad, fontSize: fs, fontWeight: 600 }}>⏰ {dm(t.deadline)}</span>
+      <span style={{ background: UI.soft, borderRadius: 999, padding: pad, fontSize: fs, fontWeight: 600 }}><I n="clock" size={11} /> {dm(t.deadline)}</span>
     );
   };
 
@@ -242,7 +243,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0 20px', flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: 34, fontWeight: 500, margin: 0 }}>Задачи</h1>
         <div style={{ display: 'flex', background: '#fff', borderRadius: 999, padding: 5, boxShadow: UI.shadow }}>
-          {[['board', `Доска · ${activeTasks.length}`], ['debts', `💸 Долги · ${debtTasks.length}`], ['done', `✓ Завершённые · ${doneTasks.length}`]].map(([k, l]) => (
+          {[['board', `Доска · ${activeTasks.length}`], ['debts', `Долги · ${debtTasks.length}`], ['done', `✓ Завершённые · ${doneTasks.length}`]].map(([k, l]) => (
             <button key={k} onClick={() => setView(k)} className={k === 'debts' && debtTasks.length && view !== 'debts' ? 'blink' : undefined} style={{
               border: 'none', borderRadius: 999, padding: '9px 16px', fontSize: 13, fontWeight: 700,
               background: view === k ? UI.dark : k === 'debts' && debtTasks.length ? 'rgba(192,57,43,.12)' : 'transparent',
@@ -269,7 +270,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
             <input style={inpS(UI)} placeholder="Что делаем (визитки 500 шт…)" value={nTitle} onChange={e => setNTitle(e.target.value)} />
             <select style={inpS(UI)} value={nClient} onChange={e => setNClient(e.target.value)}>
               <option value="">Клиент (необязательно)…</option>
-              <option value="__new">➕ Новый клиент…</option>
+              <option value="__new">+ Новый клиент…</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
             {nClient === '__new' && (
@@ -313,11 +314,11 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
 
             <div style={{ display: 'flex', gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.muted, textTransform: 'uppercase', letterSpacing: 0.4, margin: '0 0 4px 6px' }}>⏰ Дедлайн</div>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.muted, textTransform: 'uppercase', letterSpacing: 0.4, margin: '0 0 4px 6px' }}><I n="clock" size={12} /> Дедлайн</div>
                 <input style={{ ...inpS(UI) }} type="date" value={nDeadline} onChange={e => setNDeadline(e.target.value)} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.muted, textTransform: 'uppercase', letterSpacing: 0.4, margin: '0 0 4px 6px' }}>👤 В задачник</div>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.muted, textTransform: 'uppercase', letterSpacing: 0.4, margin: '0 0 4px 6px' }}><I n="user" size={12} /> В задачник</div>
                 <select style={{ ...inpS(UI) }} value={nAssignee} onChange={e => setNAssignee(e.target.value)}>
                   <option value="">{currentUser.name} (я)</option>
                   {PEOPLE_COLUMNS.filter(p => p !== currentUser.name).map(p => <option key={p} value={p}>{p}</option>)}
@@ -325,7 +326,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
               </div>
             </div>
             <select style={inpS(UI)} value={nContractor} onChange={e => setNContractor(e.target.value)}>
-              <option value="">🏭 Контрагент, если перезаказ (необязательно)…</option>
+              <option value="">Контрагент, если перезаказ (необязательно)…</option>
               {contractors.map(c => <option key={c.id} value={c.id}>{c.name} · {c.service}</option>)}
             </select>
             <textarea style={{ ...inpS(UI), minHeight: 64, resize: 'vertical', fontFamily: 'inherit' }} placeholder="Описание (материал, размеры, детали…)" value={nDesc} onChange={e => setNDesc(e.target.value)} />
@@ -338,11 +339,11 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
 
       {/* Поиск и быстрые фильтры */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="🔍 Поиск: задача или клиент" style={{
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Поиск: задача или клиент" style={{
           width: 'min(280px, 100%)', padding: '10px 18px', borderRadius: 999, border: 'none',
           background: '#fff', boxShadow: UI.shadow, fontSize: 13.5, outline: 'none',
         }} />
-        {[['debt', '💸 с долгом'], ['burning', '⏰ горят']].map(([k, l]) => (
+        {[['debt', 'с долгом'], ['burning', 'горят']].map(([k, l]) => (
           <button key={k} onClick={() => setFlt(f => f === k ? '' : k)} style={{
             border: 'none', borderRadius: 999, padding: '9px 15px', fontSize: 12.5, fontWeight: 700, boxShadow: UI.shadow,
             background: flt === k ? UI.dark : '#fff', color: flt === k ? '#fff' : UI.dark,
@@ -371,7 +372,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
       {/* Списки долгов и завершённых — отдельно от доски */}
       {view !== 'board' && (
         <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 24, maxWidth: 860 }}>
-          <div style={{ fontWeight: 800, marginBottom: 4 }}>{view === 'debts' ? '💸 Завершённые, но не оплаченные' : '✓ Завершённые и оплаченные'}</div>
+          <div style={{ fontWeight: 800, marginBottom: 4 }}>{view === 'debts' ? 'Завершённые, но не оплаченные' : '✓ Завершённые и оплаченные'}</div>
           <div style={{ color: UI.muted, fontSize: 13, marginBottom: 14 }}>
             {view === 'debts' ? 'Висят здесь, пока клиент не оплатит. Клик — открыть и записать оплату.' : 'Архив. Клик — открыть карточку.'}
           </div>
@@ -387,7 +388,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
             </div>
           ))}
           {!(view === 'debts' ? debtTasks : doneTasks).length && (
-            <div style={{ color: UI.muted, fontSize: 14 }}>{view === 'debts' ? 'По задачам долгов нет 🎉' : 'Пока пусто'}</div>
+            <div style={{ color: UI.muted, fontSize: 14 }}>{view === 'debts' ? 'По задачам долгов нет' : 'Пока пусто'}</div>
           )}
         </div>
       )}
@@ -396,7 +397,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
       {view === 'debts' && (
         <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 24, maxWidth: 860, marginTop: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-            <span style={{ fontWeight: 800 }}>🧾 Должники по мелочи</span>
+            <span style={{ fontWeight: 800 }}><I n="note" size={14} /> Должники по мелочи</span>
             {mdTotal < 0 && <span style={{ background: '#c0392b', color: '#fff', borderRadius: 999, padding: '3px 12px', fontSize: 12.5, fontWeight: 700 }}>всего {fmt(-mdTotal)}</span>}
             <button onClick={() => setShowAddDebtor(v => !v)} style={{
               marginLeft: 'auto', border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '8px 16px', fontWeight: 700, fontSize: 13,
@@ -498,7 +499,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                     </div>
                     <div style={{ color: UI.muted, fontSize: 11, marginBottom: 5 }}>
                       {t.assignee} · {clientShort(t.client_id)}
-                      {t.contractor_id && <> · 🏭 {contractors.find(c => c.id === t.contractor_id)?.name}</>}
+                      {t.contractor_id && <> · <I n="factory" size={11} /> {contractors.find(c => c.id === t.contractor_id)?.name}</>}
                       {lastAction && <> · <span style={{ fontWeight: 600 }}>{lastAction.action}</span></>}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
@@ -554,7 +555,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
 
               {!canEdit(t) && (
                 <div style={{ background: UI.soft, borderRadius: 14, padding: '10px 14px', fontSize: 13, margin: '12px 0 4px', color: UI.muted }}>
-                  👁 Задача {t.assignee} — только просмотр
+                  <I n="eye" size={13} /> Задача {t.assignee} — только просмотр
                 </div>
               )}
 
@@ -587,7 +588,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                 <Fact label="Оплата" value={debt <= 0 ? '✓ оплачено' : `долг ${fmt(debt)}`} danger={debt > 0}
                   sub={`заказ ${fmt(t.amount)}${paidTotal ? ` · внесено ${fmt(paidTotal)}` : ''}`} UI={UI} />
                 <Fact label="Дедлайн" value={dm(t.deadline)} danger={dlStatus === 'overdue'} accent={dlStatus === 'soon'}
-                  sub={dlStatus === 'overdue' ? '⏰ просрочено!' : dlStatus === 'soon' ? '⏰ горит' : 'в графике'} UI={UI} />
+                  sub={dlStatus === 'overdue' ? 'просрочено!' : dlStatus === 'soon' ? 'горит' : 'в графике'} UI={UI} />
                 <Fact label="У кого" value={t.assignee} UI={UI} />
               </div>
 
@@ -643,7 +644,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
 
               {t.contractor_id && (
                 <div style={{ background: UI.soft, borderRadius: 16, padding: '11px 16px', fontSize: 13.5, marginBottom: 14 }}>
-                  🏭 Перезаказ у контрагента: <b>{contractors.find(c => c.id === t.contractor_id)?.name}</b>
+                  <I n="factory" size={13} /> Перезаказ у контрагента: <b>{contractors.find(c => c.id === t.contractor_id)?.name}</b>
                   <span style={{ color: UI.muted }}> · {contractors.find(c => c.id === t.contractor_id)?.service}</span>
                 </div>
               )}
@@ -656,7 +657,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
               <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Оплаты по задаче</div>
               {paid.length ? paid.map(p => (
                 <div key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
-                  <span>💰</span>
+                  <I n="income" size={14} style={{ color: '#8a8a85' }} />
                   <span style={{ fontWeight: 600 }}>{catName(p.category_id)}</span>
                   <span style={{ color: UI.muted, fontSize: 12.5 }}>{p.created_by} · {p.time}</span>
                   <span style={{ marginLeft: 'auto', fontWeight: 700 }}>+{fmt(p.amount)}</span>
@@ -707,7 +708,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                   {debt > 0 && (
                     <button onClick={() => openPayForm(debt)} style={{
                       flex: 1, border: 'none', background: UI.accent, color: UI.dark, borderRadius: 999, padding: '13px 0', fontWeight: 800, fontSize: 14, minWidth: 200,
-                    }}>💰 Записать оплату ({fmt(debt)})</button>
+                    }}><I n="wallet" size={14} /> Записать оплату ({fmt(debt)})</button>
                   )}
                   {canEdit(t) && (t.done ? (
                     <button onClick={() => reopenTask(t)} style={{
@@ -720,7 +721,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                   ))}
                   <button onClick={() => repeatTask(t)} style={{
                     border: 'none', background: UI.soft, borderRadius: 999, padding: '13px 18px', fontWeight: 700, fontSize: 14,
-                  }}>🔁 Повторить</button>
+                  }}><I n="repeat" size={13} /> Повторить</button>
                 </div>
               )}
             </div>

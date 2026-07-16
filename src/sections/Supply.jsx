@@ -2,6 +2,7 @@
 // Ручная вбивка без учёта остатков: девочки видят, что заканчивается, и сами дописывают.
 // Заглушка на демо-данных.
 import { useState } from 'react';
+import I from '../Icon.jsx';
 
 const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
 const TODAY = new Date().toISOString().slice(0, 10);
@@ -34,7 +35,7 @@ export default function Supply({ supply, db, UI, showToast }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, margin: '4px 0 20px', flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: 34, fontWeight: 500, margin: 0 }}>Поставка</h1>
         <span style={{ color: UI.muted, fontSize: 14 }}>что заканчивается — записывай сразу, без остатков</span>
-        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="🔍 Поиск" style={{
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Поиск" style={{
           marginLeft: 'auto', width: 'min(200px, 100%)', padding: '10px 18px', borderRadius: 999, border: 'none',
           background: '#fff', boxShadow: UI.shadow, fontSize: 13.5, outline: 'none',
         }} />
@@ -60,7 +61,7 @@ export default function Supply({ supply, db, UI, showToast }) {
 
         {/* Нужно купить */}
         <div style={{ background: '#fff', borderRadius: 24, boxShadow: UI.shadow, padding: 22, marginBottom: 18 }}>
-          <div style={{ fontWeight: 800, marginBottom: 10 }}>🛒 Нужно купить · {active.length}</div>
+          <div style={{ fontWeight: 800, marginBottom: 10 }}><I n="cart" size={15} /> Нужно купить · {active.length}</div>
           {active.map(s => (
             <div key={s.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '11px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
               <button onClick={() => toggle(s)} title="Куплено" style={{
@@ -70,7 +71,7 @@ export default function Supply({ supply, db, UI, showToast }) {
               <span style={{ marginLeft: 'auto', color: UI.muted, fontSize: 12.5, flexShrink: 0 }}>{s.author} · {dm(s.date)}</span>
             </div>
           ))}
-          {!active.length && <div style={{ color: UI.muted, fontSize: 14 }}>Всё есть 🎉</div>}
+          {!active.length && <div style={{ color: UI.muted, fontSize: 14 }}>Всё есть ✓</div>}
         </div>
 
         {/* Куплено */}

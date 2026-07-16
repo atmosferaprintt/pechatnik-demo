@@ -1,6 +1,7 @@
 // Раздел «Мой день» — дашборд владельца: всё важное одним экраном.
 // Выручка/расходы сегодня, долги по задачам, расхождения сверки, горящие дедлайны, незакрытые дни.
 // Заглушка на демо-данных.
+import I from '../Icon.jsx';
 const fmt = (n) => (n || 0).toLocaleString('ru-RU');
 const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
 const TODAY = new Date().toISOString().slice(0, 10);
@@ -40,7 +41,7 @@ export default function Dashboard({ transactions, tasks, clients, categories, da
               border: 'none', textAlign: 'left', cursor: 'pointer',
               background: UI.dark, color: '#fff', borderRadius: 18, padding: '14px 20px', fontSize: 14, fontWeight: 600, flex: 1, minWidth: 260,
             }}>
-              🌙 Вчера ({dm(d)}) день не закрыт — <span style={{ color: UI.accent, fontWeight: 800 }}>сделать сверку →</span>
+              <I n="moon" size={14} /> Вчера ({dm(d)}) день не закрыт — <span style={{ color: UI.accent, fontWeight: 800 }}>сделать сверку →</span>
             </button>
           ))}
           {unmatched.map(r => (
@@ -48,7 +49,7 @@ export default function Dashboard({ transactions, tasks, clients, categories, da
               border: `1.5px solid #c0392b`, textAlign: 'left', cursor: 'pointer',
               background: 'rgba(192,57,43,.1)', color: '#c0392b', borderRadius: 18, padding: '14px 20px', fontSize: 14, fontWeight: 700, flex: 1, minWidth: 260,
             }}>
-              ⚠️ {fmt(r.amount)} ₽ пришло на счёт, но не записано · {r.description.split('—')[0]}
+              <I n="alert" size={14} /> {fmt(r.amount)} ₽ пришло на счёт, но не записано · {r.description.split('—')[0]}
             </button>
           ))}
         </div>
@@ -73,7 +74,7 @@ export default function Dashboard({ transactions, tasks, clients, categories, da
               </span>
             </div>
           ))}
-          {!debtors.length && <div style={{ color: UI.muted, fontSize: 14 }}>Долгов нет 🎉</div>}
+          {!debtors.length && <div style={{ color: UI.muted, fontSize: 14 }}>Долгов нет</div>}
         </Card>
 
         {/* Горящие дедлайны */}
@@ -88,7 +89,7 @@ export default function Dashboard({ transactions, tasks, clients, categories, da
                   marginLeft: 'auto', flexShrink: 0,
                   background: overdue ? '#c0392b' : UI.accent, color: overdue ? '#fff' : UI.dark,
                   borderRadius: 999, padding: '4px 12px', fontSize: 12.5, fontWeight: 700,
-                }}>⏰ {overdue ? 'просрочено' : dm(t.deadline)}</span>
+                }}><I n="clock" size={11} /> {overdue ? 'просрочено' : dm(t.deadline)}</span>
               </div>
             );
           })}

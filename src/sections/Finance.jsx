@@ -4,6 +4,7 @@
 //           тёмная карточка сверки с разницей ±, расхождения «пришло, но не записано».
 // Заглушка на демо-данных.
 import { useState } from 'react';
+import I from '../Icon.jsx';
 
 export default function Finance(props) {
   return props.isOwner ? <OwnerView {...props} /> : <EmployeeView {...props} />;
@@ -38,7 +39,7 @@ function EntryForm({ categories, banks, tasks, clients, db, PAYMENT_METHODS, UI,
   });
   const openTasks = tasks.filter(t => !t.done);
 
-  const kindLabel = { expense_shared: '', expense_work: ' · 🔒 рабочие', expense_personal: '' };
+  const kindLabel = { expense_shared: '', expense_work: ' · рабочие (приватные)', expense_personal: '' };
 
   const activeRows = type === 'income' ? rows : rows.slice(0, 1);
   const total = activeRows.reduce((s, r) => s + (+r.sum || 0), 0);
@@ -86,7 +87,7 @@ function EntryForm({ categories, banks, tasks, clients, db, PAYMENT_METHODS, UI,
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', background: UI.soft, borderRadius: 999, padding: 5 }}>
-        {[['income', '💰 Доход'], ['expense', '💸 Расход']].map(([k, l]) => (
+        {[['income', 'Доход'], ['expense', 'Расход']].map(([k, l]) => (
           <button key={k} onClick={() => { setType(k); setRows([{ cat: '', sum: '' }]); }} style={{
             flex: 1, border: 'none', borderRadius: 999, padding: '10px 0', fontWeight: 700, fontSize: 14,
             background: type === k ? UI.dark : 'transparent', color: type === k ? '#fff' : UI.dark,
@@ -97,7 +98,7 @@ function EntryForm({ categories, banks, tasks, clients, db, PAYMENT_METHODS, UI,
       {/* Владелец при расходе выбирает: рабочий или личный (сотрудники этого не видят) */}
       {isOwner && type === 'expense' && (
         <div style={{ display: 'flex', background: UI.soft, borderRadius: 999, padding: 4 }}>
-          {[['work', '🏭 Рабочий'], ['personal', '🔒 Личный']].map(([k, l]) => (
+          {[['work', 'Рабочий'], ['personal', 'Личный']].map(([k, l]) => (
             <button key={k} onClick={() => { setScope(k); setRows([{ cat: '', sum: '' }]); }} style={{
               flex: 1, border: 'none', borderRadius: 999, padding: '8px 0', fontWeight: 700, fontSize: 13,
               background: scope === k ? (k === 'personal' ? UI.accent : UI.dark) : 'transparent',
@@ -151,8 +152,8 @@ function EntryForm({ categories, banks, tasks, clients, db, PAYMENT_METHODS, UI,
       {type === 'income' && (
         <>
           <select style={input} value={taskId} onChange={e => setTaskId(e.target.value)}>
-            <option value="">🔗 Привязать к задаче (необязательно)…</option>
-            <option value="__new">➕ Создать новую задачу…</option>
+            <option value="">Привязать к задаче (необязательно)…</option>
+            <option value="__new">+ Создать новую задачу…</option>
             {openTasks.map(t => <option key={t.id} value={t.id}>{t.title} · {fmt(t.amount)} ₽</option>)}
           </select>
           {taskId === '__new' && (
@@ -247,7 +248,7 @@ function EmployeeView(props) {
         <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 26, width: 'min(420px, 100%)' }}>
           {/* Мелочь одним тапом — наличные */}
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: UI.muted, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>⚡ Мелочь одним тапом (нал)</div>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: UI.muted, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}><I n="zap" size={12} /> Мелочь одним тапом (нал)</div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {QUICK_OPS.map(q => (
                 <button key={q.label} onClick={() => quickSave(q)} style={{
@@ -273,7 +274,7 @@ function EmployeeView(props) {
             </div>
             {dayTx.map(t => (
               <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
-                <span>{t.type === 'income' ? '💰' : '💸'}</span>
+                <I n={t.type === 'income' ? 'income' : 'expense'} size={14} style={{ color: t.type === 'income' ? '#8a8a85' : '#c0392b' }} />
                 <span style={{ fontWeight: 600 }}>{catName(t.category_id)}</span>
                 {t.moved_from && <span style={{ background: 'rgba(247,214,74,.4)', borderRadius: 999, padding: '2px 9px', fontSize: 11.5, fontWeight: 700 }}>↪ со вчера</span>}
                 <span style={{ color: UI.muted, fontSize: 12.5 }}>{t.comment}</span>
@@ -433,15 +434,15 @@ function OwnerView(props) {
         <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 26 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
             <span style={{ fontWeight: 800 }}>Операции за день · {dailyTx.length}</span>
-            <input value={txQuery} onChange={e => setTxQuery(e.target.value)} placeholder="🔍 категория, коммент, кто" style={{
+            <input value={txQuery} onChange={e => setTxQuery(e.target.value)} placeholder="Поиск: категория, коммент, кто" style={{
               marginLeft: 'auto', width: 'min(210px, 100%)', padding: '8px 14px', borderRadius: 999,
               border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 12.5, outline: 'none',
             }} />
-            {[['income', '💰'], ['expense', '💸']].map(([k, icon]) => (
+            {[['income', 'income'], ['expense', 'expense']].map(([k, icon]) => (
               <button key={k} onClick={() => setTxType(v => v === k ? '' : k)} title={k === 'income' ? 'Только доходы' : 'Только расходы'} style={{
                 border: 'none', borderRadius: 999, padding: '7px 11px', fontSize: 13,
                 background: txType === k ? UI.dark : UI.soft,
-              }}>{icon}</button>
+              }}><I n={icon} size={14} /></button>
             ))}
           </div>
           <div style={{ maxHeight: 430, overflowY: 'auto', paddingRight: 6 }}>
@@ -451,15 +452,15 @@ function OwnerView(props) {
             return (!q || label.toLowerCase().includes(q)) && (!txType || t.type === txType);
           }).map(t => (
             <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14, flexWrap: 'wrap' }}>
-              <span>{t.type === 'income' ? '💰' : '💸'}</span>
-              <span style={{ fontWeight: 600 }}>{t.category_id ? catName(t.category_id) : '🏛️ Оплата с депозита'}</span>
+              <I n={t.type === 'income' ? 'income' : 'expense'} size={14} style={{ color: t.type === 'income' ? '#8a8a85' : '#c0392b' }} />
+              <span style={{ fontWeight: 600 }}>{t.category_id ? catName(t.category_id) : 'Оплата с депозита'}</span>
               {t.moved_from && <span style={{ background: 'rgba(247,214,74,.4)', borderRadius: 999, padding: '3px 10px', fontSize: 11.5, fontWeight: 700 }}>↪ со вчера</span>}
               <span style={{ background: UI.soft, borderRadius: 999, padding: '3px 10px', fontSize: 12 }}>
                 {mLabel(t.payment_method)}{t.bank_id ? ` · ${bankName(t.bank_id)}` : ''}
               </span>
               {t.task_id && (
                 <span style={{ background: 'rgba(247,214,74,.35)', borderRadius: 999, padding: '3px 10px', fontSize: 12 }}>
-                  🔗 {taskTitle(t.task_id)}
+                  <I n="link" size={11} /> {taskTitle(t.task_id)}
                 </span>
               )}
               <span style={{ color: UI.muted, fontSize: 12.5 }}>{t.comment}</span>
@@ -487,7 +488,7 @@ function OwnerView(props) {
         {/* Крупные рабочие расходы — вне дня и кассы, чтобы сверка не уходила в минус */}
         <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 22, flex: 1, minWidth: 205 }}>
           <div style={{ fontWeight: 800, marginBottom: 4, display: 'flex', alignItems: 'baseline', gap: 8 }}>
-            📦 Крупные расходы
+            <I n="box" size={15} /> Крупные расходы
             <span style={{ marginLeft: 'auto', fontSize: 17 }}>{fmt(bigTotal)} ₽</span>
           </div>
           <div style={{ color: UI.muted, fontSize: 12, marginBottom: 8 }}>В расход дня и кассу не входят — учитываются в месяце</div>
@@ -503,7 +504,7 @@ function OwnerView(props) {
         {/* Личные расходы — видит только Кристи, в бизнес-итоги не входят */}
         <div style={{ background: 'rgba(247,214,74,.18)', border: `1.5px solid ${UI.accent}`, borderRadius: 26, padding: 22, flex: 1, minWidth: 205 }}>
           <div style={{ fontWeight: 800, marginBottom: 4, display: 'flex', alignItems: 'baseline', gap: 8 }}>
-            🔒 Личные
+            <I n="lock" size={15} /> Личные
             <span style={{ marginLeft: 'auto', fontSize: 17 }}>{fmt(personalTotal)} ₽</span>
           </div>
           <div style={{ color: UI.muted, fontSize: 12, marginBottom: 8 }}>Видишь только ты. В расходы бизнеса не входят</div>
@@ -518,7 +519,7 @@ function OwnerView(props) {
 
         {/* Разбивка по картам: на какие карты пришли переводы за день */}
         <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 22, flex: 1, minWidth: 205 }}>
-          <div style={{ fontWeight: 800, marginBottom: 10 }}>💳 Переводы по картам</div>
+          <div style={{ fontWeight: 800, marginBottom: 10 }}><I n="card" size={15} /> Переводы по картам</div>
           {byCard.length ? byCard.map(b => (
             <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: 13 }}>
               <span style={{ fontWeight: 700, width: 58 }}>{b.name}</span>
@@ -551,7 +552,7 @@ function OwnerView(props) {
           <div style={{ fontSize: 13, opacity: 0.7, marginBottom: 10 }}>Пришло, но не записано:</div>
           {unmatched.map(r => (
             <div key={r.id} style={{ background: 'rgba(247,214,74,.15)', border: `1px solid ${UI.accent}`, borderRadius: 14, padding: '10px 14px', fontSize: 13, marginBottom: 8 }}>
-              ⚠️ <b>{fmt(r.amount)} ₽</b> · {r.description}
+              <I n="alert" size={12} /> <b>{fmt(r.amount)} ₽</b> · {r.description}
             </div>
           ))}
           <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>

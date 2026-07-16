@@ -3,6 +3,7 @@
 // тогда создаётся оплата способом «Депозит» и долг задачи гаснет (в доходы дня и сверку не входит).
 // Заглушка на демо-данных.
 import { useState } from 'react';
+import I from '../Icon.jsx';
 
 const fmt = (n) => (n || 0).toLocaleString('ru-RU');
 const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
@@ -65,7 +66,7 @@ export default function Deposits({ deposits, tasks, db, UI, showToast }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0 20px', flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: 34, fontWeight: 500, margin: 0 }}>Депозиты</h1>
         <span style={{ color: UI.muted, fontSize: 14 }}>внесли сумму — расходуют частями</span>
-        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="🔍 Поиск по имени" style={{
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Поиск по имени" style={{
           marginLeft: 'auto', width: 'min(240px, 100%)', padding: '11px 18px', borderRadius: 999, border: 'none',
           background: '#fff', boxShadow: UI.shadow, fontSize: 14, outline: 'none',
         }} />
@@ -82,7 +83,7 @@ export default function Deposits({ deposits, tasks, db, UI, showToast }) {
             // flex-колонка: кнопки прижаты к низу, карточки в ряду одной высоты
             <div key={d.id} style={{ background: '#fff', borderRadius: 22, boxShadow: UI.shadow, padding: 18, display: 'flex', flexDirection: 'column' }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 }}>
-                <span style={{ fontWeight: 800, fontSize: 15 }}>🏛️ {d.name}</span>
+                <span style={{ fontWeight: 800, fontSize: 15 }}><I n="landmark" size={14} /> {d.name}</span>
                 <span style={{ color: UI.muted, fontSize: 12 }}>с {dm(d.created_at)}</span>
               </div>
 
@@ -100,7 +101,7 @@ export default function Deposits({ deposits, tasks, db, UI, showToast }) {
                     <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline', padding: '7px 0', borderBottom: i < d.uses.length - 1 ? `1px solid ${UI.line}` : 'none', fontSize: 13, flexWrap: 'wrap' }}>
                       <span style={{ color: UI.muted, fontSize: 12, width: 40, flexShrink: 0 }}>{dm(u.date)}</span>
                       <span style={{ fontWeight: 600 }}>{u.what}</span>
-                      {u.task_id && <span style={{ background: 'rgba(247,214,74,.4)', borderRadius: 999, padding: '1px 8px', fontSize: 11, fontWeight: 700 }}>🔗 задача</span>}
+                      {u.task_id && <span style={{ background: 'rgba(247,214,74,.4)', borderRadius: 999, padding: '1px 8px', fontSize: 11, fontWeight: 700 }}><I n="link" size={10} /> задача</span>}
                       <span style={{ marginLeft: 'auto', fontWeight: 700, flexShrink: 0 }}>−{fmt(u.amount)} ₽</span>
                     </div>
                   ))}
@@ -112,7 +113,7 @@ export default function Deposits({ deposits, tasks, db, UI, showToast }) {
                 {useFor === d.id ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <select style={input} value={useTaskId} onChange={e => setUseTaskId(e.target.value)}>
-                      <option value="">🔗 Привязать задачу (необязательно)…</option>
+                      <option value="">Привязать задачу (необязательно)…</option>
                       {openTasks.map(t => <option key={t.id} value={t.id}>{t.title} · {fmt(t.amount)} ₽</option>)}
                     </select>
                     <input style={input} placeholder={useTaskId ? 'Комментарий (можно пусто)' : 'Что заказали'} value={useWhat} onChange={e => setUseWhat(e.target.value)} />

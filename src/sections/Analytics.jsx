@@ -76,7 +76,7 @@ export default function Analytics({ UI, transactions, categories, db, showToast 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, MONTHS[m - 1]);
     XLSX.writeFile(wb, `ПЕЧАТНИК-${MONTHS[m - 1]}-${y}.xlsx`);
-    showToast('Excel выгружен ⬇');
+    showToast('Excel выгружен');
   };
 
   const monthLabel = `${MONTHS[+month.slice(5) - 1]} ${month.slice(0, 4)}`;
@@ -92,7 +92,7 @@ export default function Analytics({ UI, transactions, categories, db, showToast 
         </div>
         <button onClick={exportExcel} style={{
           marginLeft: 'auto', border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '10px 20px', fontWeight: 700, fontSize: 14,
-        }}>⬇ Скачать Excel (как твоя таблица)</button>
+        }}>Скачать Excel (как твоя таблица)</button>
       </div>
 
       {/* Крупные цифры. Личные — отдельно, в расходы бизнеса и прибыль не входят (как в Excel Кристи) */}
@@ -100,7 +100,7 @@ export default function Analytics({ UI, transactions, categories, db, showToast 
         <Big label="Выручка" value={`${fmt(income)} ₽`} UI={UI} />
         <Big label="Расходы бизнеса" value={`${fmt(expense)} ₽`} UI={UI} />
         <Big label="Чистая прибыль" value={`${fmt(profit)} ₽`} UI={UI} dark />
-        <Big label="🔒 Личные (вне бизнеса)" value={`${fmt(personalTotal)} ₽`} UI={UI} accentBorder />
+        <Big label="Личные (вне бизнеса)" value={`${fmt(personalTotal)} ₽`} UI={UI} accentBorder />
       </div>
 
       {!monthTx.length && (

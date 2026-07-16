@@ -86,7 +86,12 @@ export default function Settings({ categories, banks, users, tasks, db, UI, show
           <Card key={kind} title={title} UI={UI}>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {categories.filter(c => c.kind === kind).map(c => (
-                <span key={c.id} style={{ background: UI.soft, borderRadius: 999, padding: '7px 16px', fontSize: 13.5, fontWeight: 600 }}>{c.name}</span>
+                <span key={c.id} style={{ background: UI.soft, borderRadius: 999, padding: '7px 6px 7px 16px', fontSize: 13.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  {c.name}
+                  <button onClick={() => { db.removeCategory(c); showToast(`«${c.name}» убрана (история операций сохранится)`); }} title="Убрать категорию" style={{
+                    border: 'none', background: 'transparent', color: UI.muted, fontSize: 12, cursor: 'pointer', padding: '0 5px',
+                  }}>✕</button>
+                </span>
               ))}
               {catFormKind === kind ? (
                 <span style={{ display: 'flex', gap: 6, width: '100%' }}>
@@ -109,7 +114,9 @@ export default function Settings({ categories, banks, users, tasks, db, UI, show
             <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
               <span style={{ fontWeight: 700 }}>{b.name}</span>
               <span style={{ color: UI.muted, fontSize: 12.5 }}>карта Кристи</span>
-              <span style={{ marginLeft: 'auto', background: UI.soft, borderRadius: 999, padding: '3px 12px', fontSize: 12 }}>активна</span>
+              <button onClick={() => { db.removeBank(b); showToast(`Карта «${b.name}» убрана`); }} title="Убрать карту" style={{
+                marginLeft: 'auto', border: 'none', background: UI.soft, borderRadius: 999, padding: '4px 10px', fontSize: 12, color: UI.muted, cursor: 'pointer', flexShrink: 0,
+              }}>✕</button>
             </div>
           ))}
           {showBankForm ? (
@@ -129,17 +136,20 @@ export default function Settings({ categories, banks, users, tasks, db, UI, show
         <Card title="👥 Пользователи" UI={UI}>
           {users.map(u => (
             <div key={u.id} style={{ borderBottom: `1px solid ${UI.line}`, padding: '8px 0' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, opacity: u.is_active === false ? 0.45 : 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, opacity: u.is_active === false ? 0.45 : 1 }}>
                 <span style={{ width: 30, height: 30, borderRadius: '50%', background: u.role === 'owner' ? UI.accent : UI.dark, color: u.role === 'owner' ? UI.dark : '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{u.name[0]}</span>
-                <span style={{ fontWeight: 600 }}>{u.name}</span>
-                {u.login && <span style={{ color: UI.muted, fontSize: 12.5 }}>@{u.login}</span>}
-                {u.is_active === false && <span style={{ background: UI.soft, borderRadius: 999, padding: '2px 10px', fontSize: 11.5, fontWeight: 700 }}>не работает</span>}
-                <span style={{ marginLeft: 'auto', background: u.role === 'owner' ? UI.accent : UI.soft, borderRadius: 999, padding: '3px 12px', fontSize: 12, fontWeight: 700 }}>
+                {/* Имя и логин ужимаются, роль и ✎ всегда у правого края */}
+                <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 6, overflow: 'hidden' }}>
+                  <span style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.name}</span>
+                  {u.login && <span style={{ color: UI.muted, fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>@{u.login}</span>}
+                  {u.is_active === false && <span style={{ background: UI.soft, borderRadius: 999, padding: '2px 8px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>не работает</span>}
+                </span>
+                <span style={{ flexShrink: 0, background: u.role === 'owner' ? UI.accent : UI.soft, borderRadius: 999, padding: '3px 11px', fontSize: 11.5, fontWeight: 700 }}>
                   {u.role === 'owner' ? 'Владелец' : 'Сотрудник'}
                 </span>
                 <button onClick={() => editId === u.id ? setEditId(null) : startEdit(u)} title="Редактировать" style={{
                   border: 'none', background: editId === u.id ? UI.dark : UI.soft, color: editId === u.id ? '#fff' : UI.dark,
-                  borderRadius: 999, padding: '5px 11px', fontSize: 12.5, cursor: 'pointer', flexShrink: 0,
+                  borderRadius: 999, padding: '5px 10px', fontSize: 12.5, cursor: 'pointer', flexShrink: 0,
                 }}>✎</button>
               </div>
 

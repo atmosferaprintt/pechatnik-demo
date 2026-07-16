@@ -477,6 +477,25 @@ export default function App() {
       } catch (e) { return fail(e); }
     },
 
+    // Удаление = архивация (is_active=false): история операций по категории/карте сохраняется
+    async removeCategory(c) {
+      if (!DEMO) {
+        const { error } = await supabase.from('categories').update({ is_active: false }).eq('id', c.id);
+        if (error) return fail(error);
+      }
+      setCategories(prev => prev.filter(x => x.id !== c.id));
+      return true;
+    },
+
+    async removeBank(b) {
+      if (!DEMO) {
+        const { error } = await supabase.from('banks').update({ is_active: false }).eq('id', b.id);
+        if (error) return fail(error);
+      }
+      setBanks(prev => prev.filter(x => x.id !== b.id));
+      return true;
+    },
+
     async updateClientPrices(c, prices) {
       if (!DEMO) {
         const { error } = await supabase.from('clients').update({ prices }).eq('id', c.id);

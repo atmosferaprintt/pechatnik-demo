@@ -587,6 +587,33 @@ export default function App() {
       return true;
     },
 
+    async renameDebtor(d, name) {
+      if (!DEMO) {
+        const { error } = await supabase.from('manual_debts').update({ name }).eq('id', d.id);
+        if (error) return fail(error);
+      }
+      setManualDebts(prev => prev.map(x => x.id === d.id ? { ...x, name } : x));
+      return true;
+    },
+
+    async renameDeposit(d, name) {
+      if (!DEMO) {
+        const { error } = await supabase.from('deposits').update({ name }).eq('id', d.id);
+        if (error) return fail(error);
+      }
+      setDeposits(prev => prev.map(x => x.id === d.id ? { ...x, name } : x));
+      return true;
+    },
+
+    async removeDeposit(d) {
+      if (!DEMO) {
+        const { error } = await supabase.from('deposits').delete().eq('id', d.id);
+        if (error) return fail(error);
+      }
+      setDeposits(prev => prev.filter(x => x.id !== d.id));
+      return true;
+    },
+
     async removeDebtor(d) {
       if (!DEMO) {
         const { error } = await supabase.from('manual_debts').delete().eq('id', d.id);

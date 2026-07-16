@@ -57,6 +57,8 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
   const [mdForm, setMdForm] = useState(null); // { debtId, sign: -1 | 1 }
   const [mdWhat, setMdWhat] = useState('');
   const [mdAmount, setMdAmount] = useState('');
+  const [mdEditId, setMdEditId] = useState(null);
+  const [mdEditName, setMdEditName] = useState('');
   const [showPayForm, setShowPayForm] = useState(false);
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState('cash');
@@ -113,7 +115,14 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
 
   const removeDebtor = (d) => {
     db.removeDebtor(d);
-    showToast(`${d.name} — убрана из должников`);
+    showToast(`«${d.name}» — удалён из должников`);
+  };
+
+  const renameDebtor = (d) => {
+    if (!mdEditName.trim()) { showToast('Имя не может быть пустым', 'error'); return; }
+    db.renameDebtor(d, mdEditName.trim());
+    setMdEditId(null);
+    showToast('Имя исправлено ✓');
   };
 
   const reopenTask = (task) => {
@@ -419,13 +428,30 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
             const bal = mdBalance(d);
             return (
               <div key={d.id} style={{ background: UI.soft, borderRadius: 18, padding: '14px 16px', marginBottom: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                  <span style={{ fontWeight: 800, fontSize: 14.5 }}>{d.name}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                  {mdEditId === d.id ? (
+                    <span style={{ display: 'flex', gap: 6, flex: 1, minWidth: 200 }}>
+                      <input value={mdEditName} onChange={e => setMdEditName(e.target.value)} onKeyDown={e => e.key === 'Enter' && renameDebtor(d)} autoFocus style={{
+                        flex: 1, minWidth: 0, padding: '8px 12px', borderRadius: 12, border: `1px solid ${UI.line}`, background: '#fff', fontSize: 14, fontWeight: 700, outline: 'none',
+                      }} />
+                      <button onClick={() => renameDebtor(d)} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '0 14px', fontWeight: 800, fontSize: 12.5 }}>ОК</button>
+                      <button onClick={() => setMdEditId(null)} style={{ border: 'none', background: '#fff', borderRadius: 999, padding: '0 10px', fontSize: 12.5 }}>✕</button>
+                    </span>
+                  ) : (
+                    <span style={{ fontWeight: 800, fontSize: 14.5 }}>{d.name}</span>
+                  )}
                   {bal < 0
-                    ? <span style={{ background: '#c0392b', color: '#fff', borderRadius: 999, padding: '3px 12px', fontSize: 12.5, fontWeight: 700 }}>должна {fmt(-bal)}</span>
-                    : <span style={{ background: 'rgba(247,214,74,.5)', borderRadius: 999, padding: '3px 12px', fontSize: 12.5, fontWeight: 700 }}>✓ рассчиталась</span>}
-                  {bal >= 0 && d.entries.length > 0 && (
-                    <button onClick={() => removeDebtor(d)} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', color: UI.muted, fontSize: 12.5, cursor: 'pointer' }}>убрать из списка ✕</button>
+                    ? <span style={{ background: '#c0392b', color: '#fff', borderRadius: 999, padding: '3px 12px', fontSize: 12.5, fontWeight: 700 }}>долг {fmt(-bal)}</span>
+                    : <span style={{ background: 'rgba(247,214,74,.5)', borderRadius: 999, padding: '3px 12px', fontSize: 12.5, fontWeight: 700 }}>✓ без долга</span>}
+                  {mdEditId !== d.id && (
+                    <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                      <button onClick={() => { setMdEditId(d.id); setMdEditName(d.name); }} title="Исправить имя" style={{
+                        border: 'none', background: '#fff', borderRadius: 999, padding: '4px 10px', fontSize: 12, cursor: 'pointer',
+                      }}><I n="pencil" size={12} /></button>
+                      <button onClick={() => removeDebtor(d)} title="Удалить из должников" style={{
+                        border: 'none', background: '#fff', borderRadius: 999, padding: '4px 10px', fontSize: 12, color: UI.muted, cursor: 'pointer',
+                      }}>✕</button>
+                    </span>
                   )}
                 </div>
 

@@ -21,6 +21,20 @@ export default function Deposits({ deposits, tasks, db, UI, showToast }) {
   const [useTaskId, setUseTaskId] = useState('');
   const [topUpFor, setTopUpFor] = useState(null); // id депозита с открытой формой пополнения
   const [topUpSum, setTopUpSum] = useState('');
+  const [editId, setEditId] = useState(null);
+  const [editName, setEditName] = useState('');
+
+  const rename = (d) => {
+    if (!editName.trim()) { showToast('Имя не может быть пустым', 'error'); return; }
+    db.renameDeposit(d, editName.trim());
+    setEditId(null);
+    showToast('Имя исправлено ✓');
+  };
+
+  const removeDeposit = (d) => {
+    db.removeDeposit(d);
+    showToast(`Депозит «${d.name}» удалён`);
+  };
 
   const spent = (d) => d.uses.reduce((s, u) => s + u.amount, 0);
   const left = (d) => d.total - spent(d);
@@ -82,9 +96,29 @@ export default function Deposits({ deposits, tasks, db, UI, showToast }) {
           return (
             // flex-колонка: кнопки прижаты к низу, карточки в ряду одной высоты
             <div key={d.id} style={{ background: '#fff', borderRadius: 22, boxShadow: UI.shadow, padding: 18, display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 }}>
-                <span style={{ fontWeight: 800, fontSize: 15 }}><I n="landmark" size={14} /> {d.name}</span>
-                <span style={{ color: UI.muted, fontSize: 12 }}>с {dm(d.created_at)}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                {editId === d.id ? (
+                  <span style={{ display: 'flex', gap: 6, flex: 1 }}>
+                    <input value={editName} onChange={e => setEditName(e.target.value)} onKeyDown={e => e.key === 'Enter' && rename(d)} autoFocus style={{
+                      flex: 1, minWidth: 0, padding: '8px 12px', borderRadius: 12, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 14, fontWeight: 700, outline: 'none',
+                    }} />
+                    <button onClick={() => rename(d)} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '0 14px', fontWeight: 800, fontSize: 12.5 }}>ОК</button>
+                    <button onClick={() => setEditId(null)} style={{ border: 'none', background: UI.soft, borderRadius: 999, padding: '0 10px', fontSize: 12.5 }}>✕</button>
+                  </span>
+                ) : (
+                  <>
+                    <span style={{ fontWeight: 800, fontSize: 15 }}><I n="landmark" size={14} /> {d.name}</span>
+                    <span style={{ color: UI.muted, fontSize: 12 }}>с {dm(d.created_at)}</span>
+                    <span style={{ marginLeft: 'auto', display: 'flex', gap: 5 }}>
+                      <button onClick={() => { setEditId(d.id); setEditName(d.name); }} title="Исправить имя" style={{
+                        border: 'none', background: UI.soft, borderRadius: 999, padding: '4px 9px', fontSize: 12, cursor: 'pointer',
+                      }}><I n="pencil" size={11} /></button>
+                      <button onClick={() => removeDeposit(d)} title="Удалить депозит" style={{
+                        border: 'none', background: UI.soft, borderRadius: 999, padding: '4px 9px', fontSize: 12, color: UI.muted, cursor: 'pointer',
+                      }}>✕</button>
+                    </span>
+                  </>
+                )}
               </div>
 
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '6px 0 5px' }}>

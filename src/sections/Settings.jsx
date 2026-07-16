@@ -10,6 +10,26 @@ export default function Settings({ categories, banks, users, tasks, db, UI, show
   const [uLogin, setULogin] = useState('');
   const [uPass, setUPass] = useState('');
   const [editId, setEditId] = useState(null);
+  const [catFormKind, setCatFormKind] = useState(null);
+  const [catName, setCatName] = useState('');
+  const [showBankForm, setShowBankForm] = useState(false);
+  const [bankName, setBankName] = useState('');
+
+  const addCategory = async (kind) => {
+    if (!catName.trim()) { showToast('Укажи название категории', 'error'); return; }
+    const ok = await db.addCategory({ name: catName.trim(), kind });
+    if (!ok) return;
+    setCatName(''); setCatFormKind(null);
+    showToast('Категория добавлена ✓');
+  };
+
+  const addBank = async () => {
+    if (!bankName.trim()) { showToast('Укажи название банка', 'error'); return; }
+    const ok = await db.addBank(bankName.trim());
+    if (!ok) return;
+    setBankName(''); setShowBankForm(false);
+    showToast('Карта добавлена ✓');
+  };
   const [eName, setEName] = useState('');
   const [eLogin, setELogin] = useState('');
   const [ePass, setEPass] = useState('');
@@ -68,9 +88,18 @@ export default function Settings({ categories, banks, users, tasks, db, UI, show
               {categories.filter(c => c.kind === kind).map(c => (
                 <span key={c.id} style={{ background: UI.soft, borderRadius: 999, padding: '7px 16px', fontSize: 13.5, fontWeight: 600 }}>{c.name}</span>
               ))}
-              <button onClick={() => showToast('Добавление категорий — следующая итерация')} style={{
-                border: `1.5px dashed ${UI.muted}`, background: 'transparent', borderRadius: 999, padding: '7px 16px', fontSize: 13.5, color: UI.muted,
-              }}>+ добавить</button>
+              {catFormKind === kind ? (
+                <span style={{ display: 'flex', gap: 6, width: '100%' }}>
+                  <input style={{ ...inp(UI), flex: 1, minWidth: 0 }} placeholder="Название категории" value={catName}
+                    onChange={e => setCatName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addCategory(kind)} autoFocus />
+                  <button onClick={() => addCategory(kind)} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '0 16px', fontWeight: 800, fontSize: 13 }}>ОК</button>
+                  <button onClick={() => setCatFormKind(null)} style={{ border: 'none', background: UI.soft, borderRadius: 999, padding: '0 12px', fontSize: 13 }}>✕</button>
+                </span>
+              ) : (
+                <button onClick={() => { setCatFormKind(kind); setCatName(''); }} style={{
+                  border: `1.5px dashed ${UI.muted}`, background: 'transparent', borderRadius: 999, padding: '7px 16px', fontSize: 13.5, color: UI.muted,
+                }}>+ добавить</button>
+              )}
             </div>
           </Card>
         ))}
@@ -83,9 +112,18 @@ export default function Settings({ categories, banks, users, tasks, db, UI, show
               <span style={{ marginLeft: 'auto', background: UI.soft, borderRadius: 999, padding: '3px 12px', fontSize: 12 }}>активна</span>
             </div>
           ))}
-          <button onClick={() => showToast('Добавление карт — следующая итерация')} style={{
-            border: `1.5px dashed ${UI.muted}`, background: 'transparent', borderRadius: 999, padding: '7px 16px', fontSize: 13.5, color: UI.muted, marginTop: 12,
-          }}>+ добавить карту</button>
+          {showBankForm ? (
+            <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+              <input style={{ ...inp(UI), flex: 1, minWidth: 0 }} placeholder="Банк (Сбер, Т-Банк…)" value={bankName}
+                onChange={e => setBankName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addBank()} autoFocus />
+              <button onClick={addBank} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '0 16px', fontWeight: 800, fontSize: 13 }}>ОК</button>
+              <button onClick={() => setShowBankForm(false)} style={{ border: 'none', background: UI.soft, borderRadius: 999, padding: '0 12px', fontSize: 13 }}>✕</button>
+            </div>
+          ) : (
+            <button onClick={() => { setShowBankForm(true); setBankName(''); }} style={{
+              border: `1.5px dashed ${UI.muted}`, background: 'transparent', borderRadius: 999, padding: '7px 16px', fontSize: 13.5, color: UI.muted, marginTop: 12,
+            }}>+ добавить карту</button>
+          )}
         </Card>
 
         <Card title="👥 Пользователи" UI={UI}>

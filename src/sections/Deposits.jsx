@@ -18,6 +18,8 @@ export default function Deposits({ deposits, tasks, db, UI, showToast }) {
   const [useWhat, setUseWhat] = useState('');
   const [useAmount, setUseAmount] = useState('');
   const [useTaskId, setUseTaskId] = useState('');
+  const [topUpFor, setTopUpFor] = useState(null); // id депозита с открытой формой пополнения
+  const [topUpSum, setTopUpSum] = useState('');
 
   const spent = (d) => d.uses.reduce((s, u) => s + u.amount, 0);
   const left = (d) => d.total - spent(d);
@@ -47,11 +49,10 @@ export default function Deposits({ deposits, tasks, db, UI, showToast }) {
   };
 
   const topUp = (d) => {
-    const add = prompt(`Пополнить депозит «${d.name}» на сумму, ₽:`); // в проде заменить на модалку
-    if (add && +add > 0) {
-      db.topUpDeposit(d, +add);
-      showToast(`Депозит пополнен на ${fmt(+add)} ₽ ✓`);
-    }
+    if (!+topUpSum) { showToast('Укажи сумму пополнения', 'error'); return; }
+    db.topUpDeposit(d, +topUpSum);
+    showToast(`Депозит пополнен на ${fmt(+topUpSum)} ₽ ✓`);
+    setTopUpFor(null); setTopUpSum('');
   };
 
   const input = {
@@ -121,12 +122,18 @@ export default function Deposits({ deposits, tasks, db, UI, showToast }) {
                       <button onClick={() => setUseFor(null)} style={{ border: 'none', background: UI.soft, borderRadius: 999, padding: '0 14px', fontSize: 13, flexShrink: 0 }}>✕</button>
                     </div>
                   </div>
+                ) : topUpFor === d.id ? (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input style={{ ...input, flex: 1, minWidth: 0 }} type="number" placeholder="Пополнить на, ₽" value={topUpSum} onChange={e => setTopUpSum(e.target.value)} />
+                    <button onClick={() => topUp(d)} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '0 20px', fontWeight: 800, fontSize: 13, flexShrink: 0 }}>ОК</button>
+                    <button onClick={() => setTopUpFor(null)} style={{ border: 'none', background: UI.soft, borderRadius: 999, padding: '0 14px', fontSize: 13, flexShrink: 0 }}>✕</button>
+                  </div>
                 ) : (
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button onClick={() => { setUseFor(d.id); setUseWhat(''); setUseAmount(''); setUseTaskId(''); }} style={{
                       flex: 1, border: 'none', background: UI.accent, borderRadius: 999, padding: '10px 0', fontWeight: 800, fontSize: 13,
                     }}>− Списать заказ</button>
-                    <button onClick={() => topUp(d)} style={{
+                    <button onClick={() => { setTopUpFor(d.id); setTopUpSum(''); }} style={{
                       border: 'none', background: UI.soft, borderRadius: 999, padding: '10px 16px', fontWeight: 700, fontSize: 13,
                     }}>+ Пополнить</button>
                   </div>

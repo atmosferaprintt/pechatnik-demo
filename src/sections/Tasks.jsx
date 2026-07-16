@@ -29,6 +29,16 @@ function deadlineStatus(t) {
 export default function Tasks({ tasks, clients, contractors, transactions, categories, banks, currentUser, db, PAYMENT_METHODS, PEOPLE_COLUMNS, manualDebts, UI, showToast }) {
   const [openTask, setOpenTask] = useState(null);
   const [view, setView] = useState('board'); // board | debts | done
+  // Форма новой задачи
+  const [showNew, setShowNew] = useState(false);
+  const [nTitle, setNTitle] = useState('');
+  const [nClient, setNClient] = useState('');
+  const [nAmount, setNAmount] = useState('');
+  const [nDeadline, setNDeadline] = useState('');
+  const [nAssignee, setNAssignee] = useState('');
+  const [nContractor, setNContractor] = useState('');
+  const [nDesc, setNDesc] = useState('');
+  const [nParts, setNParts] = useState([]); // состав заказа: [{name, sum}]
   const [query, setQuery] = useState('');
   const [flt, setFlt] = useState(''); // '' | debt | burning
   // Ручные должники: формы добавления человека и записи ±
@@ -131,6 +141,21 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
     showToast('Оплата записана ✓');
   };
 
+  const createTask = async () => {
+    if (!nTitle.trim()) { showToast('Укажи название задачи', 'error'); return; }
+    const parts = nParts.filter(p => p.name.trim() && +p.sum > 0).map(p => ({ name: p.name.trim(), amount: +p.sum }));
+    const amount = parts.length ? parts.reduce((s, p) => s + p.amount, 0) : (+nAmount || null);
+    const created = await db.addTask({
+      title: nTitle.trim(), client_id: nClient ? +nClient : null, amount, parts,
+      deadline: nDeadline || null, assignee: nAssignee || currentUser.name,
+      contractor_id: nContractor ? +nContractor : null, description: nDesc.trim(),
+    });
+    if (!created) return;
+    setShowNew(false);
+    setNTitle(''); setNClient(''); setNAmount(''); setNDeadline(''); setNAssignee(''); setNContractor(''); setNDesc(''); setNParts([]);
+    showToast(`Задача создана → ${created.assignee} ✓`);
+  };
+
   const repeatTask = (t) => {
     db.addTask({
       title: t.title, description: t.description, client_id: t.client_id, contractor_id: t.contractor_id,
@@ -189,10 +214,74 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
             }}>{l}</button>
           ))}
         </div>
-        <button onClick={() => showToast('Форма новой задачи — после утверждения макета')} style={{
+        <button onClick={() => setShowNew(true)} style={{
           border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '10px 20px', fontWeight: 700, fontSize: 14, marginLeft: 'auto',
         }}>+ Новая задача</button>
       </div>
+
+      {/* Модалка новой задачи */}
+      {showNew && (
+        <div onClick={() => setShowNew(false)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(29,29,31,.45)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20,
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 26, padding: 26, width: 'min(480px, 100%)', maxHeight: '90vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 11 }}>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <span style={{ fontWeight: 800, fontSize: 17 }}>Новая задача</span>
+              <button onClick={() => setShowNew(false)} style={{ marginLeft: 'auto', border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 15 }}>✕</button>
+            </div>
+            <input style={inpS(UI)} placeholder="Что делаем (визитки 500 шт…)" value={nTitle} onChange={e => setNTitle(e.target.value)} />
+            <select style={inpS(UI)} value={nClient} onChange={e => setNClient(e.target.value)}>
+              <option value="">Клиент (необязательно)…</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+
+            {/* Сумма: одним числом или составом заказа (печать/дизайн…) */}
+            {nParts.length === 0 ? (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input style={{ ...inpS(UI), flex: 1, minWidth: 0, fontWeight: 700 }} type="number" placeholder="Сумма, ₽" value={nAmount} onChange={e => setNAmount(e.target.value)} />
+                <button onClick={() => setNParts([{ name: 'Печать', sum: '' }, { name: 'Дизайн', sum: '' }])} style={{
+                  border: `1.5px dashed ${UI.muted}`, background: 'transparent', borderRadius: 999, padding: '0 14px', fontSize: 12, color: UI.muted, fontWeight: 600, flexShrink: 0,
+                }}>разбить на состав</button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {nParts.map((p, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 8 }}>
+                    <input style={{ ...inpS(UI), flex: 1.3, minWidth: 0 }} placeholder="Часть (печать…)" value={p.name} onChange={e => setNParts(prev => prev.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x))} />
+                    <input style={{ ...inpS(UI), flex: 1, minWidth: 0, fontWeight: 700 }} type="number" placeholder="₽" value={p.sum} onChange={e => setNParts(prev => prev.map((x, idx) => idx === i ? { ...x, sum: e.target.value } : x))} />
+                    <button onClick={() => setNParts(prev => prev.filter((_, idx) => idx !== i))} style={{ border: 'none', background: UI.soft, borderRadius: 999, width: 36, flexShrink: 0, fontSize: 13 }}>✕</button>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <button onClick={() => setNParts(prev => [...prev, { name: '', sum: '' }])} style={{
+                    border: `1.5px dashed ${UI.muted}`, background: 'transparent', borderRadius: 999, padding: '6px 13px', fontSize: 12, color: UI.muted, fontWeight: 600,
+                  }}>+ часть</button>
+                  <span style={{ marginLeft: 'auto', fontWeight: 800, fontSize: 14 }}>
+                    = {fmt(nParts.reduce((s, p) => s + (+p.sum || 0), 0))}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input style={{ ...inpS(UI), flex: 1, minWidth: 0 }} type="date" value={nDeadline} onChange={e => setNDeadline(e.target.value)} />
+              <select style={{ ...inpS(UI), flex: 1, minWidth: 0 }} value={nAssignee} onChange={e => setNAssignee(e.target.value)}>
+                <option value="">Кому: {currentUser.name} (я)</option>
+                {PEOPLE_COLUMNS.filter(p => p !== currentUser.name).map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <select style={inpS(UI)} value={nContractor} onChange={e => setNContractor(e.target.value)}>
+              <option value="">🏭 Контрагент, если перезаказ (необязательно)…</option>
+              {contractors.map(c => <option key={c.id} value={c.id}>{c.name} · {c.service}</option>)}
+            </select>
+            <textarea style={{ ...inpS(UI), minHeight: 64, resize: 'vertical', fontFamily: 'inherit' }} placeholder="Описание (материал, размеры, детали…)" value={nDesc} onChange={e => setNDesc(e.target.value)} />
+            <button onClick={createTask} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '14px 0', fontWeight: 800, fontSize: 14 }}>
+              Создать задачу
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Поиск и быстрые фильтры */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -544,6 +633,11 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
     </div>
   );
 }
+
+const inpS = (UI) => ({
+  width: '100%', padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`,
+  background: UI.soft, fontSize: 14, outline: 'none',
+});
 
 function Fact({ label, value, sub, accent, danger, UI }) {
   return (

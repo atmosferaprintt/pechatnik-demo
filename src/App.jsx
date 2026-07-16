@@ -441,6 +441,42 @@ export default function App() {
       return true;
     },
 
+    async addClient({ name, phone, instagram, note }) {
+      const phone_norm = (phone || '').replace(/\D/g, '').slice(-10) || null;
+      if (DEMO) {
+        let created;
+        setClients(prev => { created = { id: nextId(prev), name, phone, phone_norm, instagram, note, prices: [] }; return [...prev, created]; });
+        return created;
+      }
+      try {
+        const { data, error } = await supabase.from('clients').insert({ name, phone, phone_norm, instagram, note, created_by: currentUser.id }).select().single();
+        if (error) throw error;
+        const client = { ...data, prices: data.prices || [] };
+        setClients(prev => [...prev, client]);
+        return client;
+      } catch (e) { return fail(e); }
+    },
+
+    async addCategory({ name, kind }) {
+      if (DEMO) { setCategories(prev => [...prev, { id: nextId(prev), name, kind, sort: 99, is_active: true }]); return true; }
+      try {
+        const { data, error } = await supabase.from('categories').insert({ name, kind, sort: 99 }).select().single();
+        if (error) throw error;
+        setCategories(prev => [...prev, data]);
+        return true;
+      } catch (e) { return fail(e); }
+    },
+
+    async addBank(name) {
+      if (DEMO) { setBanks(prev => [...prev, { id: nextId(prev), name, sort: 99, is_active: true }]); return true; }
+      try {
+        const { data, error } = await supabase.from('banks').insert({ name, sort: 99 }).select().single();
+        if (error) throw error;
+        setBanks(prev => [...prev, data]);
+        return true;
+      } catch (e) { return fail(e); }
+    },
+
     async updateClientPrices(c, prices) {
       if (!DEMO) {
         const { error } = await supabase.from('clients').update({ prices }).eq('id', c.id);

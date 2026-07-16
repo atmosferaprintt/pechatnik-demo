@@ -4,6 +4,10 @@ import { useState } from 'react';
 
 const fmt = (n) => (n || 0).toLocaleString('ru-RU');
 const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
+const inpC = (UI) => ({
+  width: '100%', padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`,
+  background: UI.soft, fontSize: 14, outline: 'none',
+});
 
 export default function Clients({ clients, tasks, transactions, categories, db, UI, showToast }) {
   const [query, setQuery] = useState('');
@@ -11,6 +15,22 @@ export default function Clients({ clients, tasks, transactions, categories, db, 
   const [openClient, setOpenClient] = useState(null);
   const [priceWhat, setPriceWhat] = useState('');
   const [priceVal, setPriceVal] = useState('');
+  // Форма нового клиента
+  const [showNew, setShowNew] = useState(false);
+  const [nName, setNName] = useState('');
+  const [nPhone, setNPhone] = useState('');
+  const [nInsta, setNInsta] = useState('');
+  const [nNote, setNNote] = useState('');
+
+  const createClient = async () => {
+    if (!nName.trim()) { showToast('Укажи имя клиента', 'error'); return; }
+    const norm = nPhone.replace(/\D/g, '').slice(-10);
+    if (norm && clients.some(c => c.phone_norm === norm)) { showToast('Клиент с таким телефоном уже есть', 'error'); return; }
+    const created = await db.addClient({ name: nName.trim(), phone: nPhone.trim(), instagram: nInsta.trim(), note: nNote.trim() });
+    if (!created) return;
+    setShowNew(false); setNName(''); setNPhone(''); setNInsta(''); setNNote('');
+    showToast(`Клиент «${created.name}» добавлен ✓`);
+  };
 
   const addPrice = (c) => {
     if (!priceWhat.trim() || !priceVal.trim()) { showToast('Заполни «что» и «цену»', 'error'); return; }
@@ -59,10 +79,32 @@ export default function Clients({ clients, tasks, transactions, categories, db, 
             background: '#fff', boxShadow: UI.shadow, fontSize: 14, outline: 'none',
           }}
         />
-        <button onClick={() => showToast('Форма клиента — после утверждения макета')} style={{
+        <button onClick={() => setShowNew(true)} style={{
           border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '10px 20px', fontWeight: 700, fontSize: 14,
         }}>+ Клиент</button>
       </div>
+
+      {/* Модалка нового клиента */}
+      {showNew && (
+        <div onClick={() => setShowNew(false)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(29,29,31,.45)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20,
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 26, padding: 26, width: 'min(420px, 100%)', display: 'flex', flexDirection: 'column', gap: 11 }}>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <span style={{ fontWeight: 800, fontSize: 17 }}>Новый клиент</span>
+              <button onClick={() => setShowNew(false)} style={{ marginLeft: 'auto', border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 15 }}>✕</button>
+            </div>
+            <input style={inpC(UI)} placeholder="Имя (Мадина · салон «Жасмин»)" value={nName} onChange={e => setNName(e.target.value)} />
+            <input style={inpC(UI)} placeholder="Телефон" value={nPhone} onChange={e => setNPhone(e.target.value)} />
+            <input style={inpC(UI)} placeholder="Инстаграм (@…)" value={nInsta} onChange={e => setNInsta(e.target.value)} />
+            <input style={inpC(UI)} placeholder="Заметка (постоянная, бирки каждый месяц…)" value={nNote} onChange={e => setNNote(e.target.value)} />
+            <button onClick={createClient} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '14px 0', fontWeight: 800, fontSize: 14 }}>
+              Добавить
+            </button>
+          </div>
+        </div>
+      )}
 
       <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         <table style={{ width: '100%', minWidth: 680, borderCollapse: 'collapse' }}>

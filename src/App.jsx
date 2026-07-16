@@ -59,7 +59,7 @@ const TABS = [
   { key: 'tasks', label: 'Задачи', roles: ['owner', 'employee'] },
   { key: 'clients', label: 'Клиенты', roles: ['owner', 'employee'] },
   { key: 'contractors', label: 'Контрагенты', roles: ['owner', 'employee'] },
-  { key: 'deposits', label: 'Депозиты', roles: ['owner', 'employee'] },
+  { key: 'deposits', label: 'Депозиты и долги', roles: ['owner', 'employee'] },
   { key: 'supply', label: 'Поставка', roles: ['owner', 'employee'] },
   { key: 'finance', label: 'Финансы', roles: ['owner', 'employee'] },
   { key: 'analytics', label: 'Аналитика', roles: ['owner'] },
@@ -142,11 +142,11 @@ const DEMO_CONTRACTORS = [
 ];
 
 // Задачи контрагентам — отдельный канбан (не смешиваются с клиентскими задачами)
-export const CONTRACTOR_STAGES = ['Новая', 'Отдано', 'Готово', 'Забрали'];
+export const CONTRACTOR_STAGES = ['В работе', 'Готово']; // упрощены 2026-07-16 по просьбе Кристи
 
 const DEMO_CONTRACTOR_TASKS = [
-  { id: 1, title: 'Печать баннера 3×6', contractor_id: 1, amount: 3500, deadline: '2026-07-15', stage: 'Отдано', task_id: 2, comment: 'Макет отправлен в WhatsApp' },
-  { id: 2, title: 'Плёнка Oracal 641 · 2 рулона', contractor_id: 2, amount: 5600, deadline: '2026-07-16', stage: 'Новая', task_id: null, comment: 'Белая матовая + чёрная' },
+  { id: 1, title: 'Печать баннера 3×6', contractor_id: 1, amount: 3500, deadline: '2026-07-15', stage: 'В работе', task_id: 2, comment: 'Макет отправлен в WhatsApp' },
+  { id: 2, title: 'Плёнка Oracal 641 · 2 рулона', contractor_id: 2, amount: 5600, deadline: '2026-07-16', stage: 'В работе', task_id: null, comment: 'Белая матовая + чёрная' },
   { id: 3, title: 'Гравировка ложек ×10', contractor_id: 3, amount: 1800, deadline: '2026-07-14', stage: 'Готово', task_id: null, comment: 'Забрать после 17:00' },
 ];
 
@@ -192,6 +192,12 @@ const DEMO_TRANSACTIONS = [
 ];
 
 // Строки «выписки» для демо сверки: одна сумма пришла, но не записана
+const DEMO_QUICK_OPS = [
+  { label: 'Ксерокс 10 ₽', category: 'Ксерокс', amount: 10 },
+  { label: 'Ксерокс 20 ₽', category: 'Ксерокс', amount: 20 },
+  { label: 'Фото док 500 ₽', category: 'Фото на документы', amount: 500 },
+];
+
 const DEMO_BANK_ROWS = [
   { id: 1, amount: 3200, matched: true, description: 'СБП Т-Банк 10:05' },
   { id: 2, amount: 1700, matched: true, description: 'Перевод Сбер 13:10' },
@@ -237,6 +243,8 @@ export default function App() {
   const [supply, setSupply] = useState(DEMO ? DEMO_SUPPLY : []);
   // Закрытия смен: девочки закрывают смену сами (просьба Кристи 2026-07-16)
   const [dayClosures, setDayClosures] = useState([]);
+  // Кнопки «мелочь одним тапом» — настраивает Кристи в Настройках (app_settings.quick_ops)
+  const [quickOps, setQuickOps] = useState(DEMO ? DEMO_QUICK_OPS : []);
   const [transactions, setTransactions] = useState(DEMO ? DEMO_TRANSACTIONS : []);
   const [loading, setLoading] = useState(!DEMO);
 
@@ -284,6 +292,8 @@ export default function App() {
         loadAllRows('manual_debts'), loadAllRows('manual_debt_entries'),
         loadAllRows('supply_items'), loadAllRows('day_closures'), loadAllRows('transactions'),
       ]);
+      const { data: qo } = await supabase.from('app_settings').select('value').eq('key', 'quick_ops').maybeSingle();
+      setQuickOps(Array.isArray(qo?.value) ? qo.value : []);
 
       const hhmm = (t) => (t || '').slice(11, 16);
       const dOnly = (t) => (t || '').slice(0, 10);
@@ -476,6 +486,52 @@ export default function App() {
         setBanks(prev => [...prev, data]);
         return true;
       } catch (e) { return fail(e); }
+    },
+
+    async saveQuickOps(list) {
+      if (DEMO) { setQuickOps(list); return true; }
+      try {
+        const { error } = await supabase.from('app_settings').upsert({ key: 'quick_ops', value: list });
+        if (error) throw error;
+        setQuickOps(list);
+        return true;
+      } catch (e) { return fail(e); }
+    },
+
+    async updateTransaction(t, patch) {
+      if (!DEMO) {
+        const { error } = await supabase.from('transactions').update(patch).eq('id', t.id);
+        if (error) return fail(error);
+      }
+      setTransactions(prev => prev.map(x => x.id === t.id ? { ...x, ...patch } : x));
+      return true;
+    },
+
+    async removeTransaction(t) {
+      if (!DEMO) {
+        const { error } = await supabase.from('transactions').delete().eq('id', t.id);
+        if (error) return fail(error);
+      }
+      setTransactions(prev => prev.filter(x => x.id !== t.id));
+      return true;
+    },
+
+    async removeContractorTask(t) {
+      if (!DEMO) {
+        const { error } = await supabase.from('contractor_tasks').delete().eq('id', t.id);
+        if (error) return fail(error);
+      }
+      setContractorTasks(prev => prev.filter(x => x.id !== t.id));
+      return true;
+    },
+
+    async updateContractorTask(t, patch) {
+      if (!DEMO) {
+        const { error } = await supabase.from('contractor_tasks').update(patch).eq('id', t.id);
+        if (error) return fail(error);
+      }
+      setContractorTasks(prev => prev.map(x => x.id === t.id ? { ...x, ...patch } : x));
+      return true;
     },
 
     // Удаление = архивация (is_active=false): история операций по категории/карте сохраняется
@@ -685,7 +741,7 @@ export default function App() {
   const sectionProps = {
     supabase, currentUser, userRole, isOwner, showToast, onUpdate: loadAll, loadAllRows, db,
     clients, tasks, categories, banks, transactions, contractors, contractorTasks, deposits,
-    manualDebts, supply, dayClosures, CONTRACTOR_STAGES,
+    manualDebts, supply, dayClosures, quickOps, CONTRACTOR_STAGES,
     PEOPLE_COLUMNS: peopleColumns, users, demoBankRows: DEMO ? DEMO_BANK_ROWS : [],
     loading, UI, STAGES, PAYMENT_METHODS, DEMO, isMobile,
   };

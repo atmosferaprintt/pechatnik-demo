@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import I from '../Icon.jsx';
 
-export default function Settings({ categories, banks, users, tasks, db, UI, showToast }) {
+export default function Settings({ categories, banks, users, tasks, quickOps, db, UI, showToast }) {
   const [showAddUser, setShowAddUser] = useState(false);
   const [uName, setUName] = useState('');
   const [uLogin, setULogin] = useState('');
@@ -34,6 +34,21 @@ export default function Settings({ categories, banks, users, tasks, db, UI, show
   const [eName, setEName] = useState('');
   const [eLogin, setELogin] = useState('');
   const [ePass, setEPass] = useState('');
+  // Кнопки «мелочь одним тапом»
+  const [qoLabel, setQoLabel] = useState('');
+  const [qoSum, setQoSum] = useState('');
+  const [qoCat, setQoCat] = useState('');
+
+  const addQuickOp = () => {
+    if (!qoCat || !+qoSum) { showToast('Выбери категорию и сумму', 'error'); return; }
+    const cat = categories.find(c => c.id === +qoCat);
+    const label = qoLabel.trim() || `${cat.name} ${+qoSum} ₽`;
+    db.saveQuickOps([...quickOps, { label, category: cat.name, amount: +qoSum }]);
+    setQoLabel(''); setQoSum('');
+    showToast('Кнопка добавлена ✓');
+  };
+
+  const removeQuickOp = (i) => db.saveQuickOps(quickOps.filter((_, idx) => idx !== i));
 
   const kinds = [
     ['income', 'Категории доходов', 'income'],
@@ -132,6 +147,34 @@ export default function Settings({ categories, banks, users, tasks, db, UI, show
               border: `1.5px dashed ${UI.muted}`, background: 'transparent', borderRadius: 999, padding: '7px 16px', fontSize: 13.5, color: UI.muted, marginTop: 12,
             }}>+ добавить карту</button>
           )}
+        </Card>
+
+        <Card title={<><I n="zap" size={15} /> Мелочь одним тапом</>} UI={UI}>
+          <div style={{ color: UI.muted, fontSize: 12.5, marginBottom: 10 }}>
+            Быстрые кнопки в форме сотрудниц: один тап — запись наличного дохода.
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+            {quickOps.map((q, i) => (
+              <span key={i} style={{ border: `1.5px solid ${UI.accent}`, background: 'rgba(247,214,74,.18)', borderRadius: 999, padding: '7px 6px 7px 14px', fontSize: 13, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                {q.label}
+                <button onClick={() => removeQuickOp(i)} title="Убрать кнопку" style={{ border: 'none', background: 'transparent', color: UI.muted, fontSize: 12, cursor: 'pointer', padding: '0 5px' }}>✕</button>
+              </span>
+            ))}
+            {!quickOps.length && <span style={{ color: UI.muted, fontSize: 13 }}>Кнопок пока нет — добавь ниже</span>}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <select style={{ ...inp(UI), flex: 1.3, minWidth: 0 }} value={qoCat} onChange={e => setQoCat(e.target.value)}>
+                <option value="">Категория…</option>
+                {categories.filter(c => c.kind === 'income').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <input style={{ ...inp(UI), flex: 1, minWidth: 0 }} type="number" placeholder="Сумма, ₽" value={qoSum} onChange={e => setQoSum(e.target.value)} />
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input style={{ ...inp(UI), flex: 1, minWidth: 0 }} placeholder="Подпись кнопки (не обяз.)" value={qoLabel} onChange={e => setQoLabel(e.target.value)} />
+              <button onClick={addQuickOp} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '0 18px', fontWeight: 800, fontSize: 13, flexShrink: 0 }}>+ Кнопка</button>
+            </div>
+          </div>
         </Card>
 
         <Card title={<><I n="users" size={15} /> Пользователи</>} UI={UI}>

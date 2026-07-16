@@ -27,11 +27,12 @@ function deadlineStatus(t) {
   return 'ok';
 }
 
-export default function Tasks({ tasks, clients, contractors, transactions, categories, banks, currentUser, isOwner, db, PAYMENT_METHODS, PEOPLE_COLUMNS, STAGES, manualDebts, UI, showToast }) {
+export default function Tasks({ tasks, clients, contractors, transactions, categories, banks, currentUser, isOwner, db, PAYMENT_METHODS, PEOPLE_COLUMNS, STAGES, UI, showToast }) {
   const [openTask, setOpenTask] = useState(null);
   const [view, setView] = useState('board'); // board | debts | done
-  // Форма новой задачи
+  // Форма новой задачи (и правки существующей — editTask)
   const [showNew, setShowNew] = useState(false);
+  const [editTask, setEditTask] = useState(null);
   const [nTitle, setNTitle] = useState('');
   const [nClient, setNClient] = useState('');
   const [nAmount, setNAmount] = useState('');
@@ -51,14 +52,6 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
 
   // Редактировать можно только свои задачи (чужие — только смотреть). Владелец — всё.
   const canEdit = (t) => isOwner || t.assignee === currentUser.name;
-  // Ручные должники: формы добавления человека и записи ±
-  const [newDebtorName, setNewDebtorName] = useState('');
-  const [showAddDebtor, setShowAddDebtor] = useState(false);
-  const [mdForm, setMdForm] = useState(null); // { debtId, sign: -1 | 1 }
-  const [mdWhat, setMdWhat] = useState('');
-  const [mdAmount, setMdAmount] = useState('');
-  const [mdEditId, setMdEditId] = useState(null);
-  const [mdEditName, setMdEditName] = useState('');
   const [showPayForm, setShowPayForm] = useState(false);
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState('cash');
@@ -93,36 +86,6 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
     db.updateTask(task, { done: true }, { who: currentUser.name, action: '✓ завершила' });
     setOpenTask(null);
     showToast(debt > 0 ? `«${task.title}» выдана, долг ${fmt(debt)} → Долги` : `«${task.title}» выдана и закрыта ✓`);
-  };
-
-  // Ручные должники: баланс = сумма записей (минус — взял, плюс — оплатил)
-  const mdBalance = (d) => d.entries.reduce((s, e) => s + e.amount, 0);
-  const mdTotal = manualDebts.reduce((s, d) => s + Math.min(0, mdBalance(d)), 0);
-
-  const addDebtor = () => {
-    if (!newDebtorName.trim()) { showToast('Укажи имя', 'error'); return; }
-    db.addDebtor(newDebtorName.trim());
-    setNewDebtorName(''); setShowAddDebtor(false);
-    showToast('Должник добавлен ✓');
-  };
-
-  const addDebtEntry = (d) => {
-    if (!+mdAmount) { showToast('Укажи сумму', 'error'); return; }
-    db.addDebtEntry(d, { what: mdWhat.trim() || (mdForm.sign > 0 ? 'оплата' : ''), amount: mdForm.sign * Math.abs(+mdAmount) });
-    setMdForm(null); setMdWhat(''); setMdAmount('');
-    showToast(mdForm.sign > 0 ? 'Оплата записана ✓' : 'Записано в долг ✓');
-  };
-
-  const removeDebtor = (d) => {
-    db.removeDebtor(d);
-    showToast(`«${d.name}» — удалён из должников`);
-  };
-
-  const renameDebtor = (d) => {
-    if (!mdEditName.trim()) { showToast('Имя не может быть пустым', 'error'); return; }
-    db.renameDebtor(d, mdEditName.trim());
-    setMdEditId(null);
-    showToast('Имя исправлено ✓');
   };
 
   const reopenTask = (task) => {
@@ -166,6 +129,16 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
     }]);
     setShowPayForm(false);
     showToast('Оплата записана ✓');
+  };
+
+  const openEdit = (t) => {
+    setEditTask(t);
+    setNTitle(t.title); setNClient(t.client_id ? String(t.client_id) : ''); setNAmount(t.amount ? String(t.amount) : '');
+    setNDeadline(t.deadline || ''); setNAssignee(t.assignee); setNContractor(t.contractor_id ? String(t.contractor_id) : '');
+    setNDesc(t.description || '');
+    setNParts((t.parts || []).map(p => ({ name: p.name, sum: String(p.amount) })));
+    setOpenTask(null);
+    setShowNew(true);
   };
 
   const createTask = async () => {
@@ -273,8 +246,8 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
         }}>
           <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 26, padding: 26, width: 'min(480px, 100%)', maxHeight: '90vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 11 }}>
             <div style={{ display: 'flex', alignItems: 'center' }}>
-              <span style={{ fontWeight: 800, fontSize: 17 }}>Новая задача</span>
-              <button onClick={() => setShowNew(false)} style={{ marginLeft: 'auto', border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 15 }}>✕</button>
+              <span style={{ fontWeight: 800, fontSize: 17 }}>{editTask ? 'Правка задачи' : 'Новая задача'}</span>
+              <button onClick={() => { setShowNew(false); setEditTask(null); }} style={{ marginLeft: 'auto', border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 15 }}>✕</button>
             </div>
             <input style={inpS(UI)} placeholder="Что делаем (визитки 500 шт…)" value={nTitle} onChange={e => setNTitle(e.target.value)} />
             <select style={inpS(UI)} value={nClient} onChange={e => setNClient(e.target.value)}>
@@ -340,7 +313,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
             </select>
             <textarea style={{ ...inpS(UI), minHeight: 64, resize: 'vertical', fontFamily: 'inherit' }} placeholder="Описание (материал, размеры, детали…)" value={nDesc} onChange={e => setNDesc(e.target.value)} />
             <button onClick={createTask} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '14px 0', fontWeight: 800, fontSize: 14 }}>
-              Создать задачу
+              {editTask ? 'Сохранить' : 'Создать задачу'}
             </button>
           </div>
         </div>
@@ -402,94 +375,9 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
         </div>
       )}
 
-      {/* Ручные должники — «как депозиты наоборот»: берут по мелочи, оплачивают разово */}
       {view === 'debts' && (
-        <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 24, maxWidth: 860, marginTop: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-            <span style={{ fontWeight: 800 }}><I n="note" size={14} /> Должники по мелочи</span>
-            {mdTotal < 0 && <span style={{ background: '#c0392b', color: '#fff', borderRadius: 999, padding: '3px 12px', fontSize: 12.5, fontWeight: 700 }}>всего {fmt(-mdTotal)}</span>}
-            <button onClick={() => setShowAddDebtor(v => !v)} style={{
-              marginLeft: 'auto', border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '8px 16px', fontWeight: 700, fontSize: 13,
-            }}>+ Добавить человека</button>
-          </div>
-          <div style={{ color: UI.muted, fontSize: 13, marginBottom: 14 }}>Берут по мелочи (−), потом оплачивают разово (+). Виден баланс по каждому.</div>
-
-          {showAddDebtor && (
-            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-              <input value={newDebtorName} onChange={e => setNewDebtorName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addDebtor()}
-                placeholder="Имя (Зайнаб, соседний салон…)" style={{
-                  flex: 1, padding: '11px 16px', borderRadius: 999, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 14, outline: 'none', minWidth: 0,
-                }} />
-              <button onClick={addDebtor} style={{ border: 'none', background: UI.accent, borderRadius: 999, padding: '0 20px', fontWeight: 800, fontSize: 13 }}>ОК</button>
-            </div>
-          )}
-
-          {manualDebts.map(d => {
-            const bal = mdBalance(d);
-            return (
-              <div key={d.id} style={{ background: UI.soft, borderRadius: 18, padding: '14px 16px', marginBottom: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                  {mdEditId === d.id ? (
-                    <span style={{ display: 'flex', gap: 6, flex: 1, minWidth: 200 }}>
-                      <input value={mdEditName} onChange={e => setMdEditName(e.target.value)} onKeyDown={e => e.key === 'Enter' && renameDebtor(d)} autoFocus style={{
-                        flex: 1, minWidth: 0, padding: '8px 12px', borderRadius: 12, border: `1px solid ${UI.line}`, background: '#fff', fontSize: 14, fontWeight: 700, outline: 'none',
-                      }} />
-                      <button onClick={() => renameDebtor(d)} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '0 14px', fontWeight: 800, fontSize: 12.5 }}>ОК</button>
-                      <button onClick={() => setMdEditId(null)} style={{ border: 'none', background: '#fff', borderRadius: 999, padding: '0 10px', fontSize: 12.5 }}>✕</button>
-                    </span>
-                  ) : (
-                    <span style={{ fontWeight: 800, fontSize: 14.5 }}>{d.name}</span>
-                  )}
-                  {bal < 0
-                    ? <span style={{ background: '#c0392b', color: '#fff', borderRadius: 999, padding: '3px 12px', fontSize: 12.5, fontWeight: 700 }}>долг {fmt(-bal)}</span>
-                    : <span style={{ background: 'rgba(247,214,74,.5)', borderRadius: 999, padding: '3px 12px', fontSize: 12.5, fontWeight: 700 }}>✓ без долга</span>}
-                  {mdEditId !== d.id && (
-                    <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                      <button onClick={() => { setMdEditId(d.id); setMdEditName(d.name); }} title="Исправить имя" style={{
-                        border: 'none', background: '#fff', borderRadius: 999, padding: '4px 10px', fontSize: 12, cursor: 'pointer',
-                      }}><I n="pencil" size={12} /></button>
-                      <button onClick={() => removeDebtor(d)} title="Удалить из должников" style={{
-                        border: 'none', background: '#fff', borderRadius: 999, padding: '4px 10px', fontSize: 12, color: UI.muted, cursor: 'pointer',
-                      }}>✕</button>
-                    </span>
-                  )}
-                </div>
-
-                {d.entries.map((e, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'baseline', padding: '6px 0', borderBottom: `1px solid ${UI.line}`, fontSize: 13.5 }}>
-                    <span style={{ color: UI.muted, fontSize: 12.5, width: 44, flexShrink: 0 }}>{e.date.slice(8, 10)}.{e.date.slice(5, 7)}</span>
-                    <span>{e.what}</span>
-                    <span style={{ marginLeft: 'auto', fontWeight: 700, color: e.amount < 0 ? '#c0392b' : UI.dark }}>
-                      {e.amount < 0 ? '−' : '+'}{fmt(Math.abs(e.amount)).replace(' ₽', '')} ₽
-                    </span>
-                  </div>
-                ))}
-
-                {mdForm?.debtId === d.id ? (
-                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                    <input value={mdWhat} onChange={e => setMdWhat(e.target.value)} placeholder={mdForm.sign > 0 ? 'Комментарий (оплата)' : 'Что взяла (ксерокс…)'} style={{
-                      flex: 1.3, padding: '10px 14px', borderRadius: 12, border: `1px solid ${UI.line}`, background: '#fff', fontSize: 13, outline: 'none', minWidth: 140,
-                    }} />
-                    <input value={mdAmount} onChange={e => setMdAmount(e.target.value)} type="number" placeholder="Сумма" style={{
-                      width: 100, padding: '10px 14px', borderRadius: 12, border: `1px solid ${UI.line}`, background: '#fff', fontSize: 13, outline: 'none',
-                    }} />
-                    <button onClick={() => addDebtEntry(d)} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '0 18px', fontWeight: 800, fontSize: 13 }}>ОК</button>
-                    <button onClick={() => setMdForm(null)} style={{ border: 'none', background: '#fff', borderRadius: 999, padding: '0 14px', fontSize: 13 }}>✕</button>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                    <button onClick={() => { setMdForm({ debtId: d.id, sign: -1 }); setMdWhat(''); setMdAmount(''); }} style={{
-                      border: 'none', background: 'rgba(192,57,43,.12)', color: '#c0392b', borderRadius: 999, padding: '8px 16px', fontWeight: 700, fontSize: 12.5,
-                    }}>− взяла ещё</button>
-                    <button onClick={() => { setMdForm({ debtId: d.id, sign: 1 }); setMdWhat(''); setMdAmount(''); }} style={{
-                      border: 'none', background: 'rgba(247,214,74,.4)', borderRadius: 999, padding: '8px 16px', fontWeight: 700, fontSize: 12.5,
-                    }}>+ оплатила</button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          {!manualDebts.length && <div style={{ color: UI.muted, fontSize: 14 }}>Ручных должников нет</div>}
+        <div style={{ color: UI.muted, fontSize: 13, margin: '12px 4px' }}>
+          Должники по мелочи переехали в раздел «Депозиты и долги» — там же, где депозиты.
         </div>
       )}
 
@@ -576,7 +464,12 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                   <div style={{ fontSize: 22, fontWeight: 800 }}>{t.title}</div>
                   <div style={{ color: UI.muted, fontSize: 13, marginTop: 2 }}>создана {dm(t.created_at)}</div>
                 </div>
-                <button onClick={() => setOpenTask(null)} style={{ marginLeft: 'auto', border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 15, flexShrink: 0 }}>✕</button>
+                <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexShrink: 0 }}>
+                  {canEdit(t) && (
+                    <button onClick={() => openEdit(t)} title="Редактировать задачу" style={{ border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 13 }}><I n="pencil" size={13} /></button>
+                  )}
+                  <button onClick={() => setOpenTask(null)} style={{ border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 15 }}>✕</button>
+                </span>
               </div>
 
               {!canEdit(t) && (

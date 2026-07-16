@@ -41,6 +41,27 @@ export default function Contractors(props) {
 // ---------- Канбан задач контрагентам ----------
 function ContractorBoard({ contractors, contractorTasks, db, CONTRACTOR_STAGES, UI, showToast, query = '' }) {
   const [showAdd, setShowAdd] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [eTitle, setETitle] = useState('');
+  const [eComment, setEComment] = useState('');
+  const [eAmount, setEAmount] = useState('');
+  const [eDeadline, setEDeadline] = useState('');
+
+  const startEdit = (t) => {
+    setEditId(t.id); setETitle(t.title); setEComment(t.comment || ''); setEAmount(t.amount || ''); setEDeadline(t.deadline || '');
+  };
+
+  const saveEdit = (t) => {
+    if (!eTitle.trim()) { showToast('Название не может быть пустым', 'error'); return; }
+    db.updateContractorTask(t, { title: eTitle.trim(), comment: eComment.trim(), amount: +eAmount || null, deadline: eDeadline || null });
+    setEditId(null);
+    showToast('Исправлено ✓');
+  };
+
+  const removeTask = (t) => {
+    db.removeContractorTask(t);
+    showToast(`«${t.title}» удалена`);
+  };
   const [title, setTitle] = useState('');
   const [contractorId, setContractorId] = useState('');
   const [amount, setAmount] = useState('');
@@ -61,7 +82,7 @@ function ContractorBoard({ contractors, contractorTasks, db, CONTRACTOR_STAGES, 
     if (!title.trim() || !contractorId) { showToast('Укажи название и подрядчика', 'error'); return; }
     db.addContractorTask({
       title: title.trim(), contractor_id: +contractorId,
-      amount: +amount || null, deadline: deadline || null, stage: 'Новая', task_id: null, comment: comment.trim(),
+      amount: +amount || null, deadline: deadline || null, stage: 'В работе', task_id: null, comment: comment.trim(),
     });
     setTitle(''); setContractorId(''); setAmount(''); setDeadline(''); setComment(''); setShowAdd(false);
     showToast('Задача подрядчику создана ✓');
@@ -105,7 +126,28 @@ function ContractorBoard({ contractors, contractorTasks, db, CONTRACTOR_STAGES, 
                 const dl = dlChip(t);
                 return (
                   <div key={t.id} style={{ background: '#fff', borderRadius: 18, padding: '14px 14px 12px', marginBottom: 10, boxShadow: UI.shadow }}>
-                    <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{t.title}</div>
+                    {editId === t.id ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 8 }}>
+                        <input style={input} value={eTitle} onChange={e => setETitle(e.target.value)} placeholder="Название" />
+                        <input style={input} value={eComment} onChange={e => setEComment(e.target.value)} placeholder="Комментарий" />
+                        <div style={{ display: 'flex', gap: 7 }}>
+                          <input style={{ ...input, flex: 1, minWidth: 0 }} type="number" value={eAmount} onChange={e => setEAmount(e.target.value)} placeholder="Сумма, ₽" />
+                          <input style={{ ...input, flex: 1, minWidth: 0 }} type="date" value={eDeadline} onChange={e => setEDeadline(e.target.value)} />
+                        </div>
+                        <div style={{ display: 'flex', gap: 7 }}>
+                          <button onClick={() => saveEdit(t)} style={{ flex: 1, border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '9px 0', fontWeight: 800, fontSize: 13 }}>Сохранить</button>
+                          <button onClick={() => setEditId(null)} style={{ border: 'none', background: UI.soft, borderRadius: 999, padding: '9px 14px', fontSize: 13 }}>✕</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 4 }}>
+                      <span style={{ fontWeight: 700, fontSize: 14 }}>{t.title}</span>
+                      <span style={{ marginLeft: 'auto', display: 'flex', gap: 4, flexShrink: 0 }}>
+                        <button onClick={() => startEdit(t)} title="Редактировать" style={{ border: 'none', background: UI.soft, borderRadius: 999, padding: '3px 8px', fontSize: 11, cursor: 'pointer' }}><I n="pencil" size={11} /></button>
+                        <button onClick={() => removeTask(t)} title="Удалить" style={{ border: 'none', background: UI.soft, borderRadius: 999, padding: '3px 8px', fontSize: 11, color: UI.muted, cursor: 'pointer' }}>✕</button>
+                      </span>
+                    </div>
                     <div style={{ color: UI.muted, fontSize: 12.5, marginBottom: 10 }}><I n="factory" size={12} /> {cName(t.contractor_id)}{t.comment ? ` · ${t.comment}` : ''}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                       {t.amount && <span style={{ background: UI.soft, borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 700 }}>{fmt(t.amount)} ₽</span>}
@@ -115,6 +157,8 @@ function ContractorBoard({ contractors, contractorTasks, db, CONTRACTOR_STAGES, 
                       <button disabled={si === 0} onClick={(e) => move(t, -1, e)} style={{ border: 'none', background: UI.soft, borderRadius: 999, padding: '4px 14px', fontSize: 13, opacity: si === 0 ? 0.3 : 1 }}>←</button>
                       <button disabled={si === CONTRACTOR_STAGES.length - 1} onClick={(e) => move(t, 1, e)} style={{ border: 'none', background: UI.soft, borderRadius: 999, padding: '4px 14px', fontSize: 13, opacity: si === CONTRACTOR_STAGES.length - 1 ? 0.3 : 1 }}>→</button>
                     </div>
+                      </>
+                    )}
                   </div>
                 );
               })}

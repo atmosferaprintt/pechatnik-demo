@@ -180,18 +180,12 @@ function EntryForm({ categories, banks, tasks, clients, db, PAYMENT_METHODS, UI,
 
 // Частые мелкие операции — один тап = запись (против утечки незаписанной мелочи).
 // Позже владелец сможет настраивать этот список в Настройках.
-const QUICK_OPS = [
-  { label: 'Ксерокс 10 ₽', category: 'Ксерокс', amount: 10 },
-  { label: 'Ксерокс 20 ₽', category: 'Ксерокс', amount: 20 },
-  { label: 'Ксерокс 50 ₽', category: 'Ксерокс', amount: 50 },
-  { label: 'Фото док 500 ₽', category: 'Фото на документы', amount: 500 },
-];
 
 // ---------- Взгляд сотрудника ----------
 // Вид сотрудника (с 2026-07-16, просьба Кристи): доступ к сегодня + вчера,
 // закрытие смены и перенос вчерашних оплат на сегодня. Итоги по банку/месяцу — только у Кристи.
 function EmployeeView(props) {
-  const { transactions, categories, currentUser, dayClosures, db, UI, showToast } = props;
+  const { transactions, categories, currentUser, dayClosures, db, quickOps, UI, showToast } = props;
   const TODAY_D = db.today;
   const YESTERDAY_D = db.yesterday;
   const [opDate, setOpDate] = useState(TODAY_D);
@@ -246,19 +240,23 @@ function EmployeeView(props) {
 
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 26, width: 'min(420px, 100%)' }}>
-          {/* Мелочь одним тапом — наличные */}
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: UI.muted, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}><I n="zap" size={12} /> Мелочь одним тапом (нал)</div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {QUICK_OPS.map(q => (
-                <button key={q.label} onClick={() => quickSave(q)} style={{
-                  border: `1.5px solid ${UI.accent}`, background: 'rgba(247,214,74,.18)', borderRadius: 999,
-                  padding: '8px 14px', fontSize: 13, fontWeight: 700,
-                }}>{q.label}</button>
-              ))}
-            </div>
-          </div>
-          <div style={{ borderTop: `1px solid ${UI.line}`, marginBottom: 16 }} />
+          {/* Мелочь одним тапом — кнопки настраивает Кристи в Настройках */}
+          {quickOps.length > 0 && (
+            <>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: UI.muted, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}><I n="zap" size={12} /> Мелочь одним тапом (нал)</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {quickOps.map((q, i) => (
+                    <button key={i} onClick={() => quickSave(q)} style={{
+                      border: `1.5px solid ${UI.accent}`, background: 'rgba(247,214,74,.18)', borderRadius: 999,
+                      padding: '8px 14px', fontSize: 13, fontWeight: 700,
+                    }}>{q.label}</button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ borderTop: `1px solid ${UI.line}`, marginBottom: 16 }} />
+            </>
+          )}
           <EntryForm {...props} onSave={(recs) => {
             db.addTransactions(recs);
             showToast(recs.length > 1 ? `Записано ${recs.length} статьями ✓` : 'Записано ✓');
@@ -290,6 +288,11 @@ function EmployeeView(props) {
                   <button onClick={() => moveToToday(t)} title="Перенести на сегодня" style={{
                     border: 'none', background: UI.soft, borderRadius: 999, padding: '5px 12px', fontSize: 12, fontWeight: 700,
                   }}>↪ на сегодня</button>
+                )}
+                {isToday && t.created_by === currentUser.name && (
+                  <button onClick={() => { db.removeTransaction(t); showToast('Запись удалена — внеси заново, если нужно'); }} title="Удалить (ошиблась)" style={{
+                    border: 'none', background: UI.soft, borderRadius: 999, padding: '5px 10px', fontSize: 12, color: UI.muted, cursor: 'pointer',
+                  }}>✕</button>
                 )}
               </div>
             ))}
@@ -343,6 +346,17 @@ function OwnerView(props) {
   const [opDate, setOpDate] = useState(props.db.today); // история дней: смотрим любой день
   const [txQuery, setTxQuery] = useState('');
   const [txType, setTxType] = useState(''); // '' | income | expense
+  // Правка операции (ошиблись в сумме/комментарии)
+  const [txEditId, setTxEditId] = useState(null);
+  const [txEditSum, setTxEditSum] = useState('');
+  const [txEditComment, setTxEditComment] = useState('');
+
+  const saveTxEdit = (t) => {
+    if (!+txEditSum) { showToast('Сумма должна быть больше нуля', 'error'); return; }
+    db.updateTransaction(t, { amount: +txEditSum, comment: txEditComment.trim() });
+    setTxEditId(null);
+    showToast('Операция исправлена ✓');
+  };
 
   const shiftDay = (dir) => {
     const d = new Date(opDate + 'T12:00:00');
@@ -476,6 +490,24 @@ function OwnerView(props) {
                 <button onClick={() => moveToToday(t)} title="Перенести на сегодня" style={{
                   border: 'none', background: UI.soft, borderRadius: 999, padding: '5px 12px', fontSize: 12, fontWeight: 700,
                 }}>↪ на сегодня</button>
+              )}
+              <button onClick={() => { setTxEditId(t.id); setTxEditSum(String(t.amount)); setTxEditComment(t.comment || ''); }} title="Исправить" style={{
+                border: 'none', background: UI.soft, borderRadius: 999, padding: '4px 9px', fontSize: 11.5, cursor: 'pointer',
+              }}><I n="pencil" size={11} /></button>
+              <button onClick={() => { db.removeTransaction(t); showToast('Операция удалена'); }} title="Удалить" style={{
+                border: 'none', background: UI.soft, borderRadius: 999, padding: '4px 9px', fontSize: 11.5, color: UI.muted, cursor: 'pointer',
+              }}>✕</button>
+              {txEditId === t.id && (
+                <span style={{ display: 'flex', gap: 6, width: '100%', marginTop: 6 }} onClick={e => e.stopPropagation()}>
+                  <input type="number" value={txEditSum} onChange={e => setTxEditSum(e.target.value)} placeholder="Сумма" style={{
+                    width: 110, padding: '8px 12px', borderRadius: 12, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 13, fontWeight: 700, outline: 'none',
+                  }} />
+                  <input value={txEditComment} onChange={e => setTxEditComment(e.target.value)} placeholder="Комментарий" style={{
+                    flex: 1, minWidth: 0, padding: '8px 12px', borderRadius: 12, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 13, outline: 'none',
+                  }} />
+                  <button onClick={() => saveTxEdit(t)} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '0 14px', fontWeight: 800, fontSize: 12.5 }}>ОК</button>
+                  <button onClick={() => setTxEditId(null)} style={{ border: 'none', background: UI.soft, borderRadius: 999, padding: '0 10px', fontSize: 12.5 }}>✕</button>
+                </span>
               )}
             </div>
           ))}

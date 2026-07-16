@@ -8,9 +8,12 @@ const TODAY = new Date().toISOString().slice(0, 10);
 
 export default function Supply({ supply, setSupply, currentUser, UI, showToast }) {
   const [text, setText] = useState('');
+  const [query, setQuery] = useState('');
 
-  const active = supply.filter(s => !s.bought);
-  const bought = supply.filter(s => s.bought);
+  const q = query.trim().toLowerCase();
+  const visible = supply.filter(s => !q || s.text.toLowerCase().includes(q) || s.author.toLowerCase().includes(q));
+  const active = visible.filter(s => !s.bought);
+  const bought = visible.filter(s => s.bought);
 
   const add = () => {
     if (!text.trim()) { showToast('Напиши, что заканчивается', 'error'); return; }
@@ -33,6 +36,10 @@ export default function Supply({ supply, setSupply, currentUser, UI, showToast }
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, margin: '4px 0 20px', flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: 34, fontWeight: 500, margin: 0 }}>Поставка</h1>
         <span style={{ color: UI.muted, fontSize: 14 }}>что заканчивается — записывай сразу, без остатков</span>
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="🔍 Поиск" style={{
+          marginLeft: 'auto', width: 'min(200px, 100%)', padding: '10px 18px', borderRadius: 999, border: 'none',
+          background: '#fff', boxShadow: UI.shadow, fontSize: 13.5, outline: 'none',
+        }} />
       </div>
 
       <div style={{ maxWidth: 720 }}>

@@ -12,10 +12,11 @@ const TOMORROW = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
 export default function Contractors(props) {
   const { contractors, UI } = props;
   const [view, setView] = useState('board'); // board | list
+  const [query, setQuery] = useState('');
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, margin: '4px 0 20px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0 20px', flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: 34, fontWeight: 500, margin: 0 }}>Контрагенты</h1>
         <div style={{ display: 'flex', background: '#fff', borderRadius: 999, padding: 5, boxShadow: UI.shadow }}>
           {[['board', '📋 Задачи'], ['list', `🏭 Подрядчики · ${contractors.length}`]].map(([k, l]) => (
@@ -25,14 +26,19 @@ export default function Contractors(props) {
             }}>{l}</button>
           ))}
         </div>
+        <input value={query} onChange={e => setQuery(e.target.value)}
+          placeholder={view === 'board' ? '🔍 Поиск по задачам' : '🔍 Поиск по подрядчикам'} style={{
+            marginLeft: 'auto', width: 'min(240px, 100%)', padding: '10px 18px', borderRadius: 999, border: 'none',
+            background: '#fff', boxShadow: UI.shadow, fontSize: 13.5, outline: 'none',
+          }} />
       </div>
-      {view === 'board' ? <ContractorBoard {...props} /> : <ContractorList {...props} />}
+      {view === 'board' ? <ContractorBoard {...props} query={query} /> : <ContractorList {...props} query={query} />}
     </div>
   );
 }
 
 // ---------- Канбан задач контрагентам ----------
-function ContractorBoard({ contractors, contractorTasks, setContractorTasks, CONTRACTOR_STAGES, UI, showToast }) {
+function ContractorBoard({ contractors, contractorTasks, setContractorTasks, CONTRACTOR_STAGES, UI, showToast, query = '' }) {
   const [showAdd, setShowAdd] = useState(false);
   const [title, setTitle] = useState('');
   const [contractorId, setContractorId] = useState('');
@@ -82,7 +88,9 @@ function ContractorBoard({ contractors, contractorTasks, setContractorTasks, CON
 
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', overflowX: 'auto', paddingBottom: 8 }}>
         {CONTRACTOR_STAGES.map((stage, si) => {
-          const inStage = contractorTasks.filter(t => t.stage === stage);
+          const q = query.trim().toLowerCase();
+          const inStage = contractorTasks.filter(t => t.stage === stage
+            && (!q || t.title.toLowerCase().includes(q) || (contractors.find(c => c.id === t.contractor_id)?.name || '').toLowerCase().includes(q)));
           const sum = inStage.reduce((s, t) => s + (t.amount || 0), 0);
           return (
             <div key={stage} style={{ minWidth: 260, flex: 1, background: si === CONTRACTOR_STAGES.length - 1 ? '#f0ecdf' : UI.soft, borderRadius: 22, padding: 14 }}>
@@ -147,7 +155,11 @@ function ContractorBoard({ contractors, contractorTasks, setContractorTasks, CON
 }
 
 // ---------- Список подрядчиков ----------
-function ContractorList({ contractors, setContractors, contractorTasks, tasks, clients, UI, showToast }) {
+function ContractorList({ contractors, setContractors, contractorTasks, tasks, clients, UI, showToast, query = '' }) {
+  const visibleContractors = contractors.filter(c => {
+    const q = query.trim().toLowerCase();
+    return !q || c.name.toLowerCase().includes(q) || (c.service || '').toLowerCase().includes(q);
+  });
   const [openId, setOpenId] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState('');
@@ -181,8 +193,8 @@ function ContractorList({ contractors, setContractors, contractorTasks, tasks, c
         }}>+ Контрагент</button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
-        {contractors.map(c => {
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
+        {visibleContractors.map(c => {
           const bt = boardTasks(c.id);
           const active = bt.filter(t => t.stage !== 'Забрали').length;
           const sum = bt.reduce((s, t) => s + (t.amount || 0), 0);

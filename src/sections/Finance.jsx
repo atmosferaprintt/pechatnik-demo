@@ -129,7 +129,7 @@ function EntryForm({ categories, banks, tasks, setTasks, clients, transactions, 
       )}
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {PAYMENT_METHODS.map(m => (
+        {PAYMENT_METHODS.filter(m => m.key !== 'deposit').map(m => (
           <button key={m.key} onClick={() => setMethod(m.key)} style={{
             border: 'none', borderRadius: 999, padding: '8px 14px', fontSize: 13, fontWeight: 600,
             background: method === m.key ? UI.accent : UI.soft,
@@ -340,6 +340,8 @@ function OwnerView(props) {
   const { transactions, setTransactions, categories, banks, tasks, demoBankRows, dayClosures, UI, PAYMENT_METHODS, showToast } = props;
   const [showAddOp, setShowAddOp] = useState(false);
   const [opDate, setOpDate] = useState('2026-07-14'); // история дней: смотрим любой день
+  const [txQuery, setTxQuery] = useState('');
+  const [txType, setTxType] = useState(''); // '' | income | expense
 
   const shiftDay = (dir) => {
     const d = new Date(opDate + 'T12:00:00');
@@ -371,7 +373,8 @@ function OwnerView(props) {
   const personalTx = dayTx.filter(isPersonal);
   const personalTotal = personalTx.reduce((s, t) => s + t.amount, 0);
 
-  const income = dailyTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  // Оплаты «Депозитом» в доходы дня не входят — деньги пришли раньше, при внесении депозита
+  const income = dailyTx.filter(t => t.type === 'income' && t.payment_method !== 'deposit').reduce((s, t) => s + t.amount, 0);
   const expense = dailyTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
   // Касса дня: наличные приходы минус наличная операционка (крупные и личные кассу дня не трогают)
   const cashIn = dailyTx.filter(t => t.type === 'income' && t.payment_method === 'cash').reduce((s, t) => s + t.amount, 0);
@@ -380,7 +383,7 @@ function OwnerView(props) {
   // Выписка в демо есть только за «сегодня»
   const dayBankRows = isToday ? demoBankRows : [];
   const bankTotal = dayBankRows.reduce((s, r) => s + r.amount, 0);
-  const recordedNonCash = dayTx.filter(t => t.type === 'income' && t.payment_method !== 'cash' && t.payment_method !== 'card').reduce((s, t) => s + t.amount, 0);
+  const recordedNonCash = dayTx.filter(t => t.type === 'income' && !['cash', 'card', 'deposit'].includes(t.payment_method)).reduce((s, t) => s + t.amount, 0);
   const diff = recordedNonCash - bankTotal;
   const unmatched = dayBankRows.filter(r => !r.matched);
 
@@ -425,12 +428,31 @@ function OwnerView(props) {
       </div>
 
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 26, flex: 2, minWidth: 380 }}>
-          <div style={{ fontWeight: 800, marginBottom: 14 }}>Операции за день · {dailyTx.length}</div>
-          {dailyTx.map(t => (
+        {/* Левая колонка: лента операций (скроллится) + крупные/личные/карты в ряд под ней */}
+        <div style={{ flex: 2, minWidth: 380, display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 26 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 800 }}>Операции за день · {dailyTx.length}</span>
+            <input value={txQuery} onChange={e => setTxQuery(e.target.value)} placeholder="🔍 категория, коммент, кто" style={{
+              marginLeft: 'auto', width: 'min(210px, 100%)', padding: '8px 14px', borderRadius: 999,
+              border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 12.5, outline: 'none',
+            }} />
+            {[['income', '💰'], ['expense', '💸']].map(([k, icon]) => (
+              <button key={k} onClick={() => setTxType(v => v === k ? '' : k)} title={k === 'income' ? 'Только доходы' : 'Только расходы'} style={{
+                border: 'none', borderRadius: 999, padding: '7px 11px', fontSize: 13,
+                background: txType === k ? UI.dark : UI.soft,
+              }}>{icon}</button>
+            ))}
+          </div>
+          <div style={{ maxHeight: 430, overflowY: 'auto', paddingRight: 6 }}>
+          {dailyTx.filter(t => {
+            const q = txQuery.trim().toLowerCase();
+            const label = (t.category_id ? catName(t.category_id) : 'депозит') + ' ' + (t.comment || '') + ' ' + t.created_by;
+            return (!q || label.toLowerCase().includes(q)) && (!txType || t.type === txType);
+          }).map(t => (
             <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14, flexWrap: 'wrap' }}>
               <span>{t.type === 'income' ? '💰' : '💸'}</span>
-              <span style={{ fontWeight: 600 }}>{catName(t.category_id)}</span>
+              <span style={{ fontWeight: 600 }}>{t.category_id ? catName(t.category_id) : '🏛️ Оплата с депозита'}</span>
               {t.moved_from && <span style={{ background: 'rgba(247,214,74,.4)', borderRadius: 999, padding: '3px 10px', fontSize: 11.5, fontWeight: 700 }}>↪ со вчера</span>}
               <span style={{ background: UI.soft, borderRadius: 999, padding: '3px 10px', fontSize: 12 }}>
                 {mLabel(t.payment_method)}{t.bank_id ? ` · ${bankName(t.bank_id)}` : ''}
@@ -456,10 +478,61 @@ function OwnerView(props) {
               )}
             </div>
           ))}
+          {!dailyTx.length && <div style={{ color: UI.muted, fontSize: 14 }}>Записей за этот день нет</div>}
+          </div>
         </div>
 
-        <div style={{ flex: 1, minWidth: 320, display: 'flex', flexDirection: 'column', gap: 20 }}>
-        <div style={{ background: UI.dark, color: '#fff', borderRadius: 26, padding: 26 }}>
+        {/* Крупные, личные и переводы по картам — в ряд под операциями (просьба Кристи 2026-07-16) */}
+        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'stretch' }}>
+        {/* Крупные рабочие расходы — вне дня и кассы, чтобы сверка не уходила в минус */}
+        <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 22, flex: 1, minWidth: 205 }}>
+          <div style={{ fontWeight: 800, marginBottom: 4, display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            📦 Крупные расходы
+            <span style={{ marginLeft: 'auto', fontSize: 17 }}>{fmt(bigTotal)} ₽</span>
+          </div>
+          <div style={{ color: UI.muted, fontSize: 12, marginBottom: 8 }}>В расход дня и кассу не входят — учитываются в месяце</div>
+          {bigTx.length ? bigTx.map(t => (
+            <div key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '7px 0', borderBottom: `1px solid ${UI.line}`, fontSize: 13.5 }}>
+              <span style={{ fontWeight: 600 }}>{catName(t.category_id)}</span>
+              <span style={{ color: UI.muted, fontSize: 12 }}>{t.comment}</span>
+              <span style={{ marginLeft: 'auto', fontWeight: 700 }}>−{fmt(t.amount)} ₽</span>
+            </div>
+          )) : <div style={{ color: UI.muted, fontSize: 13 }}>Без крупных расходов</div>}
+        </div>
+
+        {/* Личные расходы — видит только Кристи, в бизнес-итоги не входят */}
+        <div style={{ background: 'rgba(247,214,74,.18)', border: `1.5px solid ${UI.accent}`, borderRadius: 26, padding: 22, flex: 1, minWidth: 205 }}>
+          <div style={{ fontWeight: 800, marginBottom: 4, display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            🔒 Личные
+            <span style={{ marginLeft: 'auto', fontSize: 17 }}>{fmt(personalTotal)} ₽</span>
+          </div>
+          <div style={{ color: UI.muted, fontSize: 12, marginBottom: 8 }}>Видишь только ты. В расходы бизнеса не входят</div>
+          {personalTx.length ? personalTx.map(t => (
+            <div key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '7px 0', borderBottom: `1px solid ${UI.line}`, fontSize: 13.5 }}>
+              <span style={{ fontWeight: 600 }}>{t.comment || catName(t.category_id)}</span>
+              <span style={{ background: '#fff', borderRadius: 999, padding: '2px 9px', fontSize: 11.5 }}>{mLabel(t.payment_method)}</span>
+              <span style={{ marginLeft: 'auto', fontWeight: 700 }}>−{fmt(t.amount)} ₽</span>
+            </div>
+          )) : <div style={{ color: UI.muted, fontSize: 13 }}>Без личных трат</div>}
+        </div>
+
+        {/* Разбивка по картам: на какие карты пришли переводы за день */}
+        <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 22, flex: 1, minWidth: 205 }}>
+          <div style={{ fontWeight: 800, marginBottom: 10 }}>💳 Переводы по картам</div>
+          {byCard.length ? byCard.map(b => (
+            <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: 13 }}>
+              <span style={{ fontWeight: 700, width: 58 }}>{b.name}</span>
+              <div style={{ flex: 1, height: 16, background: UI.soft, borderRadius: 999, overflow: 'hidden' }}>
+                <div style={{ width: `${(b.sum / cardMax) * 100}%`, height: '100%', background: UI.accent, borderRadius: 999 }} />
+              </div>
+              <span style={{ fontWeight: 700, width: 70, textAlign: 'right' }}>{fmt(b.sum)} ₽</span>
+            </div>
+          )) : <div style={{ color: UI.muted, fontSize: 13 }}>Переводов за этот день нет</div>}
+        </div>
+        </div>
+        </div>
+
+        <div style={{ background: UI.dark, color: '#fff', borderRadius: 26, padding: 26, flex: 1, minWidth: 320 }}>
           {shiftClosure && (
             <div style={{ background: 'rgba(247,214,74,.2)', border: '1px solid #f7d64a', borderRadius: 14, padding: '10px 14px', fontSize: 13, fontWeight: 700, marginBottom: 14 }}>
               ✓ Смена закрыта · {shiftClosure.closed_by} · остаток {fmt(shiftClosure.cash_fact)} ₽ · разница {shiftClosure.diff > 0 ? '+' : ''}{fmt(shiftClosure.diff)} ₽
@@ -491,54 +564,6 @@ function OwnerView(props) {
           </div>
         </div>
 
-        {/* Крупные рабочие расходы — вне дня и кассы, чтобы сверка не уходила в минус */}
-        <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 24 }}>
-          <div style={{ fontWeight: 800, marginBottom: 4, display: 'flex', alignItems: 'baseline', gap: 8 }}>
-            📦 Крупные расходы
-            <span style={{ marginLeft: 'auto', fontSize: 18 }}>{fmt(bigTotal)} ₽</span>
-          </div>
-          <div style={{ color: UI.muted, fontSize: 12.5, marginBottom: 10 }}>Бумага, тонер, поставщики. В расход дня и кассу не входят — учитываются в месяце.</div>
-          {bigTx.length ? bigTx.map(t => (
-            <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
-              <span style={{ fontWeight: 600 }}>{catName(t.category_id)}</span>
-              <span style={{ color: UI.muted, fontSize: 12.5 }}>{t.comment}</span>
-              <span style={{ marginLeft: 'auto', fontWeight: 700 }}>−{fmt(t.amount)} ₽</span>
-              <span style={{ color: UI.muted, fontSize: 12.5 }}>{t.time}</span>
-            </div>
-          )) : <div style={{ color: UI.muted, fontSize: 13.5 }}>Без крупных расходов</div>}
-        </div>
-
-        {/* Личные расходы — видит только Кристи, в бизнес-итоги не входят */}
-        <div style={{ background: 'rgba(247,214,74,.18)', border: `1.5px solid ${UI.accent}`, borderRadius: 26, padding: 24 }}>
-          <div style={{ fontWeight: 800, marginBottom: 4, display: 'flex', alignItems: 'baseline', gap: 8 }}>
-            🔒 Личные
-            <span style={{ marginLeft: 'auto', fontSize: 18 }}>{fmt(personalTotal)} ₽</span>
-          </div>
-          <div style={{ color: UI.muted, fontSize: 12.5, marginBottom: 10 }}>Видишь только ты. В расходы бизнеса не входят.</div>
-          {personalTx.length ? personalTx.map(t => (
-            <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
-              <span style={{ fontWeight: 600 }}>{t.comment || catName(t.category_id)}</span>
-              <span style={{ background: '#fff', borderRadius: 999, padding: '3px 10px', fontSize: 12 }}>{mLabel(t.payment_method)}</span>
-              <span style={{ marginLeft: 'auto', fontWeight: 700 }}>−{fmt(t.amount)} ₽</span>
-              <span style={{ color: UI.muted, fontSize: 12.5 }}>{t.time}</span>
-            </div>
-          )) : <div style={{ color: UI.muted, fontSize: 13.5 }}>Без личных трат</div>}
-        </div>
-
-        {/* Разбивка по картам: на какие карты пришли переводы за день */}
-        <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 24 }}>
-          <div style={{ fontWeight: 800, marginBottom: 12 }}>💳 Переводы по картам</div>
-          {byCard.length ? byCard.map(b => (
-            <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', fontSize: 13.5 }}>
-              <span style={{ fontWeight: 700, width: 66 }}>{b.name}</span>
-              <div style={{ flex: 1, height: 18, background: UI.soft, borderRadius: 999, overflow: 'hidden' }}>
-                <div style={{ width: `${(b.sum / cardMax) * 100}%`, height: '100%', background: UI.accent, borderRadius: 999 }} />
-              </div>
-              <span style={{ fontWeight: 700, width: 76, textAlign: 'right' }}>{fmt(b.sum)} ₽</span>
-            </div>
-          )) : <div style={{ color: UI.muted, fontSize: 13.5 }}>Переводов за этот день нет</div>}
-        </div>
-        </div>
       </div>
 
       {/* Модалка «+ Операция» — та же форма, но со всеми категориями владельца */}

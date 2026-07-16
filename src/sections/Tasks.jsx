@@ -29,6 +29,8 @@ function deadlineStatus(t) {
 export default function Tasks({ tasks, setTasks, clients, contractors, transactions, setTransactions, categories, banks, currentUser, PAYMENT_METHODS, PEOPLE_COLUMNS, manualDebts, setManualDebts, UI, showToast }) {
   const [openTask, setOpenTask] = useState(null);
   const [view, setView] = useState('board'); // board | debts | done
+  const [query, setQuery] = useState('');
+  const [flt, setFlt] = useState(''); // '' | debt | burning
   // Ручные должники: формы добавления человека и записи ±
   const [newDebtorName, setNewDebtorName] = useState('');
   const [showAddDebtor, setShowAddDebtor] = useState(false);
@@ -50,10 +52,18 @@ export default function Tasks({ tasks, setTasks, clients, contractors, transacti
   const incomeCats = categories.filter(c => c.kind === 'income');
   const taskDebt = (t) => (t.amount || 0) - paidSum(t.id);
 
+  // Поиск по названию/клиенту + быстрые фильтры «с долгом» и «горят»
+  const matches = (t) => {
+    const q = query.trim().toLowerCase();
+    const okQ = !q || t.title.toLowerCase().includes(q) || clientShort(t.client_id).toLowerCase().includes(q);
+    const okF = !flt || (flt === 'debt' ? taskDebt(t) > 0 : ['overdue', 'soon'].includes(deadlineStatus(t)));
+    return okQ && okF;
+  };
+
   // Завершённая задача уходит с доски: с долгом — в «Долги», оплаченная — в «Завершённые»
-  const activeTasks = tasks.filter(t => !t.done);
-  const debtTasks = tasks.filter(t => t.done && taskDebt(t) > 0);
-  const doneTasks = tasks.filter(t => t.done && taskDebt(t) <= 0);
+  const activeTasks = tasks.filter(t => !t.done && matches(t));
+  const debtTasks = tasks.filter(t => t.done && taskDebt(t) > 0 && matches(t));
+  const doneTasks = tasks.filter(t => t.done && taskDebt(t) <= 0 && matches(t));
 
   const finishTask = (task, e) => {
     e?.stopPropagation();
@@ -141,34 +151,38 @@ export default function Tasks({ tasks, setTasks, clients, contractors, transacti
     showToast(`«${t.title}» скопирована к тебе 🔁`);
   };
 
-  // Чип статуса оплаты: ✓ оплачено / мигающий долг
-  const PayChip = ({ t }) => {
+  // Чип статуса оплаты: ✓ оплачено / долг (small — компактный вариант для карточек доски)
+  const PayChip = ({ t, small }) => {
     const debt = (t.amount || 0) - paidSum(t.id);
+    const pad = small ? '2px 7px' : '4px 10px';
+    const fs = small ? 11 : 12.5;
     if (debt <= 0) return (
-      <span style={{ background: 'rgba(247,214,74,.5)', borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 700 }}>✓ оплачено</span>
+      <span style={{ background: 'rgba(247,214,74,.5)', borderRadius: 999, padding: pad, fontSize: fs, fontWeight: 700 }}>✓{small ? '' : ' оплачено'}</span>
     );
     return (
-      <span className="blink" style={{ background: '#c0392b', color: '#fff', borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 700 }}>
+      <span className="blink" style={{ background: '#c0392b', color: '#fff', borderRadius: 999, padding: pad, fontSize: fs, fontWeight: 700 }}>
         долг {fmt(debt)}
       </span>
     );
   };
 
-  const DeadlineChip = ({ t }) => {
+  const DeadlineChip = ({ t, small }) => {
     const st = deadlineStatus(t);
+    const pad = small ? '2px 7px' : '4px 10px';
+    const fs = small ? 11 : 12.5;
     if (st === 'overdue') return (
-      <span className="blink" style={{ background: '#c0392b', color: '#fff', borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 700 }}>
-        ⏰ просрочено {dm(t.deadline)}
+      <span className="blink" style={{ background: '#c0392b', color: '#fff', borderRadius: 999, padding: pad, fontSize: fs, fontWeight: 700 }}>
+        ⏰ проср. {dm(t.deadline)}
       </span>
     );
     if (st === 'soon') return (
-      <span style={{ background: UI.accent, borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 700 }}>
-        ⏰ горит · {dm(t.deadline)}
+      <span style={{ background: UI.accent, borderRadius: 999, padding: pad, fontSize: fs, fontWeight: 700 }}>
+        ⏰ {small ? dm(t.deadline) : `горит · ${dm(t.deadline)}`}
       </span>
     );
     if (!t.deadline) return null;
     return (
-      <span style={{ background: UI.soft, borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 600 }}>⏰ {dm(t.deadline)}</span>
+      <span style={{ background: UI.soft, borderRadius: 999, padding: pad, fontSize: fs, fontWeight: 600 }}>⏰ {dm(t.deadline)}</span>
     );
   };
 
@@ -188,6 +202,25 @@ export default function Tasks({ tasks, setTasks, clients, contractors, transacti
         <button onClick={() => showToast('Форма новой задачи — после утверждения макета')} style={{
           border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '10px 20px', fontWeight: 700, fontSize: 14, marginLeft: 'auto',
         }}>+ Новая задача</button>
+      </div>
+
+      {/* Поиск и быстрые фильтры */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="🔍 Поиск: задача или клиент" style={{
+          width: 'min(280px, 100%)', padding: '10px 18px', borderRadius: 999, border: 'none',
+          background: '#fff', boxShadow: UI.shadow, fontSize: 13.5, outline: 'none',
+        }} />
+        {[['debt', '💸 с долгом'], ['burning', '⏰ горят']].map(([k, l]) => (
+          <button key={k} onClick={() => setFlt(f => f === k ? '' : k)} style={{
+            border: 'none', borderRadius: 999, padding: '9px 15px', fontSize: 12.5, fontWeight: 700, boxShadow: UI.shadow,
+            background: flt === k ? UI.dark : '#fff', color: flt === k ? '#fff' : UI.dark,
+          }}>{l}</button>
+        ))}
+        {(query || flt) && (
+          <button onClick={() => { setQuery(''); setFlt(''); }} style={{
+            border: 'none', background: 'transparent', color: UI.muted, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+          }}>сбросить ✕</button>
+        )}
       </div>
 
       {/* Списки долгов и завершённых — отдельно от доски */}
@@ -294,7 +327,7 @@ export default function Tasks({ tasks, setTasks, clients, contractors, transacti
           const inCol = activeTasks.filter(t => t.assignee === person);
           const sum = inCol.reduce((s, t) => s + (t.amount || 0), 0);
           return (
-            <div key={person} style={{ minWidth: 230, flex: 1, background: UI.soft, borderRadius: 22, padding: 12 }}>
+            <div key={person} style={{ minWidth: 205, flex: 1, background: UI.soft, borderRadius: 20, padding: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '0 2px' }}>
                 <span style={{
                   width: 30, height: 30, borderRadius: '50%', background: UI.dark, color: '#fff',
@@ -309,36 +342,29 @@ export default function Tasks({ tasks, setTasks, clients, contractors, transacti
               {inCol.map(t => {
                 const lastAction = t.log?.length ? t.log[t.log.length - 1] : null;
                 return (
-                  <div key={t.id} onClick={() => { setOpenTask(t); setShowPayForm(false); }} style={{ background: '#fff', borderRadius: 18, padding: '13px 13px 11px', marginBottom: 10, boxShadow: UI.shadow, cursor: 'pointer' }}>
-                    <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 4 }}>{t.title}</div>
-                    <div style={{ color: UI.muted, fontSize: 12, marginBottom: 8 }}>
+                  // Компактная карточка (просьба Кристи: «чтоб долго скролить не пришлось»)
+                  <div key={t.id} onClick={() => { setOpenTask(t); setShowPayForm(false); }} style={{ background: '#fff', borderRadius: 15, padding: '9px 10px 8px', marginBottom: 7, boxShadow: UI.shadow, cursor: 'pointer' }}>
+                    <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 2, lineHeight: 1.25 }}>{t.title}</div>
+                    <div style={{ color: UI.muted, fontSize: 11, marginBottom: 5 }}>
                       {clientShort(t.client_id)}
-                      {t.contractor_id && <span style={{ marginLeft: 5, background: UI.soft, borderRadius: 999, padding: '2px 7px', fontSize: 11 }}>🏭 {contractors.find(c => c.id === t.contractor_id)?.name}</span>}
+                      {t.contractor_id && <> · 🏭 {contractors.find(c => c.id === t.contractor_id)?.name}</>}
+                      {lastAction && <> · <span style={{ fontWeight: 600 }}>{lastAction.action}</span></>}
                     </div>
-                    {lastAction && (
-                      <div style={{ marginBottom: 8 }}>
-                        <span style={{ background: 'rgba(247,214,74,.3)', borderRadius: 999, padding: '3px 9px', fontSize: 11.5, fontWeight: 600 }}>
-                          {lastAction.who}: {lastAction.action}
-                        </span>
-                      </div>
-                    )}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-                      <span style={{ background: UI.soft, borderRadius: 999, padding: '4px 9px', fontSize: 12, fontWeight: 700 }}>{fmt(t.amount)}</span>
-                      <PayChip t={t} />
-                      <DeadlineChip t={t} />
-                    </div>
-                    {/* Передать другому или завершить — не открывая карточку */}
-                    <div style={{ display: 'flex', gap: 6, marginTop: 9 }}>
-                      <select value="" onClick={e => e.stopPropagation()} onChange={e => transfer(t, e.target.value)} style={{
-                        flex: 1, border: 'none', background: UI.soft, borderRadius: 999, minWidth: 0,
-                        padding: '6px 10px', fontSize: 12, fontWeight: 600, outline: 'none', cursor: 'pointer',
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                      <span style={{ background: UI.soft, borderRadius: 999, padding: '2px 7px', fontSize: 11, fontWeight: 700 }}>{fmt(t.amount)}</span>
+                      <PayChip t={t} small />
+                      <DeadlineChip t={t} small />
+                      {/* Передать / завершить — не открывая карточку */}
+                      <select value="" onClick={e => e.stopPropagation()} onChange={e => transfer(t, e.target.value)} title="Передать" style={{
+                        marginLeft: 'auto', border: 'none', background: UI.soft, borderRadius: 999, width: 34,
+                        padding: '3px 6px', fontSize: 11, fontWeight: 700, outline: 'none', cursor: 'pointer',
                       }}>
-                        <option value="">→ передать…</option>
+                        <option value="">→</option>
                         {PEOPLE_COLUMNS.filter(p => p !== person).map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
                       <button title="Завершить задачу" onClick={(e) => finishTask(t, e)} style={{
                         border: 'none', background: UI.soft, borderRadius: 999,
-                        padding: '5px 12px', fontSize: 12.5, fontWeight: 800, flexShrink: 0,
+                        padding: '3px 9px', fontSize: 11.5, fontWeight: 800, flexShrink: 0,
                       }}>✓</button>
                     </div>
                   </div>
@@ -478,7 +504,7 @@ export default function Tasks({ tasks, setTasks, clients, contractors, transacti
                     }} />
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {PAYMENT_METHODS.map(m => (
+                    {PAYMENT_METHODS.filter(m => m.key !== 'deposit').map(m => (
                       <button key={m.key} onClick={() => setPayMethod(m.key)} style={{
                         border: 'none', borderRadius: 999, padding: '7px 13px', fontSize: 12.5, fontWeight: 600,
                         background: payMethod === m.key ? UI.accent : '#fff',

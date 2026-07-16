@@ -431,6 +431,15 @@ export default function App() {
       } catch (e) { return fail(e); }
     },
 
+    async removeTask(t) {
+      if (!DEMO) {
+        const { error } = await supabase.from('tasks').delete().eq('id', t.id);
+        if (error) return fail(error);
+      }
+      setTasks(prev => prev.filter(x => x.id !== t.id));
+      return true;
+    },
+
     async updateTask(t, patch, logAction) {
       if (!DEMO) {
         const { error } = await supabase.from('tasks').update(patch).eq('id', t.id);

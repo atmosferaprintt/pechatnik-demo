@@ -33,6 +33,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
   // Форма новой задачи (и правки существующей — editTask)
   const [showNew, setShowNew] = useState(false);
   const [editTask, setEditTask] = useState(null);
+  const [saving, setSaving] = useState(false); // защита от двойного тапа «Сохранить»
   const [nTitle, setNTitle] = useState('');
   const [nClient, setNClient] = useState('');
   const [nAmount, setNAmount] = useState('');
@@ -142,7 +143,10 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
   };
 
   const createTask = async () => {
+    if (saving) return;
     if (!nTitle.trim()) { showToast('Укажи название задачи', 'error'); return; }
+    setSaving(true);
+    try {
 
     // Клиент: выбранный или создаём на месте — и он сразу летит в базу клиентов
     let clientId = nClient && nClient !== '__new' ? +nClient : null;
@@ -163,16 +167,26 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
 
     const parts = nParts.filter(p => p.name.trim() && +p.sum > 0).map(p => ({ name: p.name.trim(), amount: +p.sum }));
     const amount = parts.length ? parts.reduce((s, p) => s + p.amount, 0) : (+nAmount || null);
-    const created = await db.addTask({
+    const payload = {
       title: nTitle.trim(), client_id: clientId, amount, parts,
       deadline: nDeadline || null, assignee: nAssignee || currentUser.name,
       contractor_id: nContractor ? +nContractor : null, description: nDesc.trim(),
-    });
-    if (!created) return;
-    setShowNew(false);
+    };
+
+    if (editTask) {
+      // Правка существующей задачи — НЕ создание новой
+      const ok = await db.updateTask(editTask, payload, { who: currentUser.name, action: 'изменила задачу' });
+      if (!ok) return;
+      showToast('Задача исправлена ✓');
+    } else {
+      const created = await db.addTask(payload);
+      if (!created) return;
+      showToast(`Задача создана → ${created.assignee} ✓`);
+    }
+    setShowNew(false); setEditTask(null);
     setNTitle(''); setNClient(''); setNAmount(''); setNDeadline(''); setNAssignee(''); setNContractor(''); setNDesc(''); setNParts([]);
     setNcFio(''); setNcPhone(''); setNcCompany('');
-    showToast(`Задача создана → ${created.assignee} ✓`);
+    } finally { setSaving(false); }
   };
 
   const repeatTask = (t) => {
@@ -187,6 +201,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
 
   // Чип статуса оплаты: ✓ оплачено / долг (small — компактный вариант для карточек доски)
   const PayChip = ({ t, small }) => {
+    if (!t.amount && !paidSum(t.id)) return null; // без суммы — нечего показывать
     const debt = (t.amount || 0) - paidSum(t.id);
     const pad = small ? '2px 7px' : '4px 10px';
     const fs = small ? 11 : 12.5;
@@ -312,8 +327,8 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
               {contractors.map(c => <option key={c.id} value={c.id}>{c.name} · {c.service}</option>)}
             </select>
             <textarea style={{ ...inpS(UI), minHeight: 64, resize: 'vertical', fontFamily: 'inherit' }} placeholder="Описание (материал, размеры, детали…)" value={nDesc} onChange={e => setNDesc(e.target.value)} />
-            <button onClick={createTask} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '14px 0', fontWeight: 800, fontSize: 14 }}>
-              {editTask ? 'Сохранить' : 'Создать задачу'}
+            <button onClick={createTask} disabled={saving} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '14px 0', fontWeight: 800, fontSize: 14, opacity: saving ? 0.5 : 1 }}>
+              {saving ? 'Сохраняю…' : editTask ? 'Сохранить' : 'Создать задачу'}
             </button>
           </div>
         </div>
@@ -467,6 +482,11 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                 <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexShrink: 0 }}>
                   {canEdit(t) && (
                     <button onClick={() => openEdit(t)} title="Редактировать задачу" style={{ border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 13 }}><I n="pencil" size={13} /></button>
+                  )}
+                  {isOwner && (
+                    <button onClick={() => { db.removeTask(t); setOpenTask(null); showToast(`«${t.title}» удалена`); }} title="Удалить задачу насовсем" style={{
+                      border: 'none', background: 'rgba(192,57,43,.1)', color: '#c0392b', borderRadius: 999, padding: '0 13px', height: 32, fontSize: 12, fontWeight: 700,
+                    }}>удалить</button>
                   )}
                   <button onClick={() => setOpenTask(null)} style={{ border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 15 }}>✕</button>
                 </span>

@@ -222,6 +222,8 @@ export default function App() {
   const [deposits, setDeposits] = useState(DEMO ? DEMO_DEPOSITS : []);
   const [manualDebts, setManualDebts] = useState(DEMO ? DEMO_MANUAL_DEBTS : []);
   const [supply, setSupply] = useState(DEMO ? DEMO_SUPPLY : []);
+  // Закрытия смен: девочки закрывают смену сами (просьба Кристи 2026-07-16)
+  const [dayClosures, setDayClosures] = useState([]);
   const [transactions, setTransactions] = useState(DEMO ? DEMO_TRANSACTIONS : []);
   const [loading, setLoading] = useState(!DEMO);
 
@@ -285,7 +287,7 @@ export default function App() {
   const sectionProps = {
     supabase, currentUser, userRole, isOwner, showToast, onUpdate: loadAll, loadAllRows,
     clients, setClients, tasks, categories, banks, transactions, contractors, contractorTasks, deposits, setDeposits,
-    manualDebts, setManualDebts, supply, setSupply,
+    manualDebts, setManualDebts, supply, setSupply, dayClosures, setDayClosures,
     setTasks, setTransactions, setContractors, setContractorTasks, CONTRACTOR_STAGES, PEOPLE_COLUMNS,
     demoUsers: DEMO_USERS, demoBankRows: DEMO_BANK_ROWS,
     loading, UI, STAGES, PAYMENT_METHODS, DEMO, isMobile,

@@ -183,25 +183,66 @@ const QUICK_OPS = [
 ];
 
 // ---------- Взгляд сотрудника ----------
+// Вид сотрудника (с 2026-07-16, просьба Кристи): доступ к сегодня + вчера,
+// закрытие смены и перенос вчерашних оплат на сегодня. Итоги по банку/месяцу — только у Кристи.
 function EmployeeView(props) {
-  const { transactions, setTransactions, categories, currentUser, UI, showToast } = props;
-  const myToday = transactions.filter(t => t.created_by === currentUser.name);
+  const { transactions, setTransactions, categories, currentUser, dayClosures, setDayClosures, UI, showToast } = props;
+  const TODAY_D = '2026-07-14';
+  const YESTERDAY_D = '2026-07-13';
+  const [opDate, setOpDate] = useState(TODAY_D);
+  const [cashFact, setCashFact] = useState('');
+  const isToday = opDate === TODAY_D;
+
   const catName = (id) => categories.find(c => c.id === id)?.name || '?';
+  const catKind = (t) => categories.find(c => c.id === t.category_id)?.kind;
+
+  // Девочкам видна операционка дня (без личных и крупных расходов Кристи)
+  const dayTx = transactions.filter(t => t.op_date === opDate
+    && catKind(t) !== 'expense_personal'
+    && !(t.type === 'expense' && catKind(t) === 'expense_work'));
+  const cashCalc = dayTx.reduce((s, t) => s + (t.payment_method === 'cash' ? (t.type === 'income' ? t.amount : -t.amount) : 0), 0);
+  const closure = dayClosures.find(c => c.date === opDate);
 
   const quickSave = (q) => {
     const cat = categories.find(c => c.name === q.category);
     if (!cat) return;
     setTransactions(prev => [...prev, {
-      id: Date.now(), op_date: new Date().toISOString().slice(0, 10), type: 'income',
+      id: Math.max(0, ...prev.map(t => t.id)) + 1, op_date: TODAY_D, type: 'income',
       category_id: cat.id, amount: q.amount, payment_method: 'cash', bank_id: null,
       created_by: currentUser.name, comment: '', time: new Date().toTimeString().slice(0, 5),
     }]);
     showToast(`${q.label} — записано ✓`);
   };
 
+  // Вчерашняя оплата пришла/нашлась после закрытия смены → перекидываем на сегодня
+  const moveToToday = (t) => {
+    setTransactions(prev => prev.map(x => x.id === t.id ? { ...x, op_date: TODAY_D, moved_from: opDate } : x));
+    showToast(`«${catName(t.category_id)} ${fmt(t.amount)} ₽» перенесена на сегодня ↪`);
+  };
+
+  const closeShift = () => {
+    if (cashFact === '') { showToast('Введи фактический остаток в кассе', 'error'); return; }
+    const diff = +cashFact - cashCalc;
+    setDayClosures(prev => [...prev, { date: opDate, cash_fact: +cashFact, cash_calc: cashCalc, diff, closed_by: currentUser.name }]);
+    setCashFact('');
+    showToast(diff === 0 ? 'Смена закрыта, касса сошлась ✓' : `Смена закрыта, разница ${diff > 0 ? '+' : ''}${fmt(diff)} ₽`, diff === 0 ? 'ok' : 'error');
+  };
+
   return (
     <div>
-      <h1 style={{ fontSize: 34, fontWeight: 500, margin: '4px 0 20px' }}>Финансы</h1>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0 20px', flexWrap: 'wrap' }}>
+        <h1 style={{ fontSize: 34, fontWeight: 500, margin: 0 }}>Финансы</h1>
+        {/* Доступ: только сегодня и вчера */}
+        <div style={{ display: 'flex', background: '#fff', borderRadius: 999, padding: 5, boxShadow: UI.shadow }}>
+          {[[TODAY_D, 'Сегодня · 14.07'], [YESTERDAY_D, 'Вчера · 13.07']].map(([d, l]) => (
+            <button key={d} onClick={() => setOpDate(d)} style={{
+              border: 'none', borderRadius: 999, padding: '9px 16px', fontSize: 13, fontWeight: 700,
+              background: opDate === d ? UI.dark : 'transparent', color: opDate === d ? '#fff' : UI.dark,
+            }}>{l}</button>
+          ))}
+        </div>
+      </div>
+
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 26, width: 'min(420px, 100%)' }}>
           {/* Мелочь одним тапом — наличные */}
@@ -223,18 +264,69 @@ function EmployeeView(props) {
           }} />
         </div>
 
-        <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 26, flex: 1, minWidth: 320 }}>
-          <div style={{ fontWeight: 800, marginBottom: 4 }}>Мои записи за сегодня</div>
-          <div style={{ color: UI.muted, fontSize: 13, marginBottom: 14 }}>Только твои. Итоги видит только Кристи 🙈</div>
-          {myToday.length ? myToday.map(t => (
-            <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
-              <span>{t.type === 'income' ? '💰' : '💸'}</span>
-              <span style={{ fontWeight: 600 }}>{catName(t.category_id)}</span>
-              <span style={{ color: UI.muted, fontSize: 12.5 }}>{t.comment}</span>
-              <span style={{ marginLeft: 'auto', fontWeight: 700 }}>{fmt(t.amount)} ₽</span>
-              <span style={{ color: UI.muted, fontSize: 12.5 }}>{t.time}</span>
+        <div style={{ flex: 1, minWidth: 320, display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Операции дня — видно всем, чтобы можно было закрыть смену */}
+          <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 26 }}>
+            <div style={{ fontWeight: 800, marginBottom: 4 }}>Операции за {isToday ? 'сегодня' : 'вчера'} · {dayTx.length}</div>
+            <div style={{ color: UI.muted, fontSize: 13, marginBottom: 14 }}>
+              {isToday ? 'Всё, что записано за день — по этому закрывается смена' : 'Вчерашний день: оплату можно перекинуть на сегодня ↪'}
             </div>
-          )) : <div style={{ color: UI.muted, fontSize: 14 }}>Пока пусто — запиши первую операцию</div>}
+            {dayTx.map(t => (
+              <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
+                <span>{t.type === 'income' ? '💰' : '💸'}</span>
+                <span style={{ fontWeight: 600 }}>{catName(t.category_id)}</span>
+                {t.moved_from && <span style={{ background: 'rgba(247,214,74,.4)', borderRadius: 999, padding: '2px 9px', fontSize: 11.5, fontWeight: 700 }}>↪ со вчера</span>}
+                <span style={{ color: UI.muted, fontSize: 12.5 }}>{t.comment}</span>
+                <span style={{ marginLeft: 'auto', fontWeight: 700, color: t.type === 'expense' ? '#c0392b' : UI.dark }}>
+                  {t.type === 'income' ? '+' : '−'}{fmt(t.amount)} ₽
+                </span>
+                <span title={t.created_by} style={{
+                  width: 24, height: 24, borderRadius: '50%', background: t.created_by === currentUser.name ? UI.accent : UI.dark,
+                  color: t.created_by === currentUser.name ? UI.dark : '#fff',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0,
+                }}>{t.created_by[0]}</span>
+                {!isToday && t.type === 'income' && (
+                  <button onClick={() => moveToToday(t)} title="Перенести на сегодня" style={{
+                    border: 'none', background: UI.soft, borderRadius: 999, padding: '5px 12px', fontSize: 12, fontWeight: 700,
+                  }}>↪ на сегодня</button>
+                )}
+              </div>
+            ))}
+            {!dayTx.length && <div style={{ color: UI.muted, fontSize: 14 }}>Записей нет</div>}
+          </div>
+
+          {/* Закрытие смены */}
+          <div style={{ background: UI.dark, color: '#fff', borderRadius: 26, padding: 24 }}>
+            <div style={{ fontWeight: 800, marginBottom: 10 }}>Закрытие смены · {isToday ? '14.07' : '13.07'}</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,.14)' }}>
+              <span style={{ opacity: .75 }}>Наличных за день (расчётно)</span>
+              <span style={{ fontWeight: 800 }}>{fmt(cashCalc)} ₽</span>
+            </div>
+            {closure ? (
+              <div style={{ marginTop: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '4px 0' }}>
+                  <span style={{ opacity: .75 }}>Остаток по факту</span><span style={{ fontWeight: 800 }}>{fmt(closure.cash_fact)} ₽</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '4px 0' }}>
+                  <span style={{ opacity: .75 }}>Разница</span>
+                  <span style={{ fontWeight: 800, color: closure.diff === 0 ? '#f7d64a' : '#ff8a80' }}>{closure.diff > 0 ? '+' : ''}{fmt(closure.diff)} ₽</span>
+                </div>
+                <div style={{ marginTop: 10, background: 'rgba(247,214,74,.2)', border: '1px solid #f7d64a', borderRadius: 14, padding: '10px 14px', fontSize: 13.5, fontWeight: 700 }}>
+                  ✓ Смена закрыта · {closure.closed_by}
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+                <input type="number" value={cashFact} onChange={e => setCashFact(e.target.value)} placeholder="Остаток в кассе, ₽" style={{
+                  flex: 1, border: 'none', borderRadius: 999, padding: '12px 18px', fontSize: 14, outline: 'none',
+                  background: 'rgba(255,255,255,.12)', color: '#fff', minWidth: 0,
+                }} />
+                <button onClick={closeShift} style={{
+                  border: 'none', background: UI.accent, color: UI.dark, borderRadius: 999, padding: '12px 20px', fontWeight: 800, fontSize: 14, flexShrink: 0,
+                }}>Закрыть смену</button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -245,7 +337,7 @@ function EmployeeView(props) {
 const RU_DATE = (d) => `${+d.slice(8, 10)} ${['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'][+d.slice(5, 7) - 1]}`;
 
 function OwnerView(props) {
-  const { transactions, setTransactions, categories, banks, tasks, demoBankRows, UI, PAYMENT_METHODS, showToast } = props;
+  const { transactions, setTransactions, categories, banks, tasks, demoBankRows, dayClosures, UI, PAYMENT_METHODS, showToast } = props;
   const [showAddOp, setShowAddOp] = useState(false);
   const [opDate, setOpDate] = useState('2026-07-14'); // история дней: смотрим любой день
 
@@ -292,6 +384,14 @@ function OwnerView(props) {
   const diff = recordedNonCash - bankTotal;
   const unmatched = dayBankRows.filter(r => !r.matched);
 
+  const shiftClosure = dayClosures.find(c => c.date === opDate);
+
+  // Вчерашняя оплата нашлась после закрытия смены → перенос на сегодня
+  const moveToToday = (t) => {
+    setTransactions(prev => prev.map(x => x.id === t.id ? { ...x, op_date: '2026-07-14', moved_from: opDate } : x));
+    showToast(`«${catName(t.category_id)} ${fmt(t.amount)} ₽» перенесена на сегодня ↪`);
+  };
+
   // Разбивка по картам: сколько переводов пришло на каждую карту за день
   const byCard = banks
     .map(b => ({ ...b, sum: dayTx.filter(t => t.type === 'income' && t.payment_method === 'transfer' && t.bank_id === b.id).reduce((s, t) => s + t.amount, 0) }))
@@ -331,6 +431,7 @@ function OwnerView(props) {
             <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14, flexWrap: 'wrap' }}>
               <span>{t.type === 'income' ? '💰' : '💸'}</span>
               <span style={{ fontWeight: 600 }}>{catName(t.category_id)}</span>
+              {t.moved_from && <span style={{ background: 'rgba(247,214,74,.4)', borderRadius: 999, padding: '3px 10px', fontSize: 11.5, fontWeight: 700 }}>↪ со вчера</span>}
               <span style={{ background: UI.soft, borderRadius: 999, padding: '3px 10px', fontSize: 12 }}>
                 {mLabel(t.payment_method)}{t.bank_id ? ` · ${bankName(t.bank_id)}` : ''}
               </span>
@@ -348,12 +449,22 @@ function OwnerView(props) {
                 alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0,
               }}>{t.created_by[0]}</span>
               <span style={{ color: UI.muted, fontSize: 12.5 }}>{t.time}</span>
+              {!isToday && t.type === 'income' && (
+                <button onClick={() => moveToToday(t)} title="Перенести на сегодня" style={{
+                  border: 'none', background: UI.soft, borderRadius: 999, padding: '5px 12px', fontSize: 12, fontWeight: 700,
+                }}>↪ на сегодня</button>
+              )}
             </div>
           ))}
         </div>
 
         <div style={{ flex: 1, minWidth: 320, display: 'flex', flexDirection: 'column', gap: 20 }}>
         <div style={{ background: UI.dark, color: '#fff', borderRadius: 26, padding: 26 }}>
+          {shiftClosure && (
+            <div style={{ background: 'rgba(247,214,74,.2)', border: '1px solid #f7d64a', borderRadius: 14, padding: '10px 14px', fontSize: 13, fontWeight: 700, marginBottom: 14 }}>
+              ✓ Смена закрыта · {shiftClosure.closed_by} · остаток {fmt(shiftClosure.cash_fact)} ₽ · разница {shiftClosure.diff > 0 ? '+' : ''}{fmt(shiftClosure.diff)} ₽
+            </div>
+          )}
           <div style={{ fontWeight: 800, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
             Сверка дня
             <span style={{ marginLeft: 'auto', background: diff === 0 && !unmatched.length ? UI.accent : '#c0392b', color: diff === 0 && !unmatched.length ? UI.dark : '#fff', borderRadius: 999, padding: '3px 12px', fontSize: 12, fontWeight: 800 }}>

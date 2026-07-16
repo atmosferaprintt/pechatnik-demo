@@ -1,0 +1,15 @@
+node_modules
+dist
+.git
+.env
+.env.local
+*.png
+*.PNG
+*.jpg
+*.pdf
+*.html
+!index.html
+.playwright-mcp
+supabase
+ПЛАН-ВНЕДРЕНИЯ.md
+TODO.md

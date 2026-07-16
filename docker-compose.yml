@@ -1,0 +1,13 @@
+# CRM «ПЕЧАТНИК» — прод-контейнер (порт 80).
+# VITE_-переменные зашиваются в бандл при сборке; значения берутся из /opt/pechatnik-web/.env на сервере.
+services:
+  pechatnik-web:
+    build:
+      context: .
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-http://159.194.213.28:8000}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+    container_name: pechatnik-web
+    ports:
+      - "80:80"
+    restart: unless-stopped

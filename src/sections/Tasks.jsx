@@ -89,7 +89,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
     const debt = taskDebt(task);
     db.updateTask(task, { done: true }, { who: currentUser.name, action: '✓ завершила' });
     setOpenTask(null);
-    showToast(debt > 0 ? `«${task.title}» завершена → 💸 Долги (${fmt(debt)})` : `«${task.title}» завершена ✓`);
+    showToast(debt > 0 ? `«${task.title}» выдана, долг ${fmt(debt)} → 💸 Долги` : `«${task.title}» выдана и закрыта ✓`);
   };
 
   // Ручные должники: баланс = сумма записей (минус — взял, плюс — оплатил)
@@ -513,7 +513,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                           <button disabled={si === STAGES.length - 1} title="Следующий этап" onClick={(e) => stageMove(t, 1, e)} style={{
                             border: 'none', background: UI.soft, borderRadius: 999, padding: '3px 8px', fontSize: 11, opacity: si === STAGES.length - 1 ? 0.3 : 1,
                           }}>→</button>
-                          <button title="Завершить задачу (выдана)" onClick={(e) => finishTask(t, e)} style={{
+                          <button title="Заказ выдан клиенту — завершить" onClick={(e) => finishTask(t, e)} style={{
                             border: 'none', background: stage === 'Готово' ? UI.accent : UI.soft, borderRadius: 999,
                             padding: '3px 9px', fontSize: 11.5, fontWeight: 800,
                           }}>✓</button>
@@ -716,7 +716,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                   ) : (
                     <button onClick={() => finishTask(t)} style={{
                       border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '13px 18px', fontWeight: 800, fontSize: 14,
-                    }}>✓ Завершить</button>
+                    }}>✓ Заказ выдан</button>
                   ))}
                   <button onClick={() => repeatTask(t)} style={{
                     border: 'none', background: UI.soft, borderRadius: 999, padding: '13px 18px', fontWeight: 700, fontSize: 14,

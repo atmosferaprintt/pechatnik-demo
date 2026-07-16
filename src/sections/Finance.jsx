@@ -10,11 +10,13 @@ export default function Finance(props) {
 }
 
 const fmt = (n) => (n || 0).toLocaleString('ru-RU');
+// Общий чек для разбитой на статьи оплаты (вызывается из обработчика, не при рендере)
+const newBatchId = () => (globalThis.crypto?.randomUUID ? crypto.randomUUID() : 'b' + Math.random().toString(36).slice(2));
 
 // ---------- Общая форма записи операции ----------
 // У дохода: привязка к задаче (или создание новой задачи на месте) и разбивка суммы
 // на несколько статей дохода — просьбы Кристи от 2026-07-15.
-function EntryForm({ categories, banks, tasks, setTasks, clients, transactions, PAYMENT_METHODS, UI, currentUser, isOwner, showToast, onSave }) {
+function EntryForm({ categories, banks, tasks, clients, db, PAYMENT_METHODS, UI, currentUser, isOwner, showToast, onSave }) {
   const [type, setType] = useState('income');
   const [scope, setScope] = useState('work'); // для расходов владельца: work | personal
   const [rows, setRows] = useState([{ cat: '', sum: '' }]); // статьи: доход можно разбить на несколько
@@ -47,29 +49,31 @@ function EntryForm({ categories, banks, tasks, setTasks, clients, transactions, 
     setComment(''); setTaskId(''); setNewTaskTitle(''); setNewTaskClient('');
   };
 
-  const save = () => {
+  const save = async () => {
     const filled = activeRows.filter(r => r.cat && +r.sum > 0);
     if (!filled.length || filled.length !== activeRows.length) { showToast('Заполни категорию и сумму в каждой статье', 'error'); return; }
 
     // «➕ Новая задача» из привязки — создаём задачу на месте
     let linkTaskId = type === 'income' && taskId && taskId !== '__new' ? +taskId : null;
+    let linkClientId = null;
     if (type === 'income' && taskId === '__new') {
       if (!newTaskTitle.trim()) { showToast('Укажи название новой задачи', 'error'); return; }
-      linkTaskId = Math.max(0, ...tasks.map(t => t.id)) + 1;
-      setTasks(prev => [...prev, {
-        id: linkTaskId, title: newTaskTitle.trim(), client_id: newTaskClient ? +newTaskClient : null,
-        stage: 'Новая', amount: total, deadline: null, assignee: currentUser.name,
-        created_at: new Date().toISOString().slice(0, 10), description: comment,
-        log: [{ who: currentUser.name, action: 'приняла (создана из оплаты)', time: new Date().toTimeString().slice(0, 5) }],
-      }]);
+      const created = await db.addTask({
+        title: newTaskTitle.trim(), client_id: newTaskClient ? +newTaskClient : null,
+        amount: total, deadline: null, assignee: currentUser.name, description: comment,
+        _firstAction: 'приняла (создана из оплаты)',
+      });
+      if (!created) return;
+      linkTaskId = created.id;
+      linkClientId = created.client_id;
     }
 
-    const time = new Date().toTimeString().slice(0, 5);
-    const base = Math.max(0, ...transactions.map(t => t.id));
-    onSave(filled.map((r, i) => ({
-      id: base + i + 1, op_date: '2026-07-14', type, category_id: +r.cat, amount: +r.sum,
+    // Разбивка на статьи: несколько операций одним чеком (общий batch_id)
+    const batch = filled.length > 1 ? newBatchId() : null;
+    onSave(filled.map(r => ({
+      type, category_id: +r.cat, amount: +r.sum,
       payment_method: method, bank_id: method === 'transfer' ? +bankId || null : null,
-      task_id: linkTaskId, created_by: currentUser.name, comment, time,
+      task_id: linkTaskId, client_id: linkClientId, batch_id: batch, comment,
     })));
     resetForm();
   };
@@ -186,9 +190,9 @@ const QUICK_OPS = [
 // Вид сотрудника (с 2026-07-16, просьба Кристи): доступ к сегодня + вчера,
 // закрытие смены и перенос вчерашних оплат на сегодня. Итоги по банку/месяцу — только у Кристи.
 function EmployeeView(props) {
-  const { transactions, setTransactions, categories, currentUser, dayClosures, setDayClosures, UI, showToast } = props;
-  const TODAY_D = '2026-07-14';
-  const YESTERDAY_D = '2026-07-13';
+  const { transactions, categories, currentUser, dayClosures, db, UI, showToast } = props;
+  const TODAY_D = db.today;
+  const YESTERDAY_D = db.yesterday;
   const [opDate, setOpDate] = useState(TODAY_D);
   const [cashFact, setCashFact] = useState('');
   const isToday = opDate === TODAY_D;
@@ -205,25 +209,21 @@ function EmployeeView(props) {
 
   const quickSave = (q) => {
     const cat = categories.find(c => c.name === q.category);
-    if (!cat) return;
-    setTransactions(prev => [...prev, {
-      id: Math.max(0, ...prev.map(t => t.id)) + 1, op_date: TODAY_D, type: 'income',
-      category_id: cat.id, amount: q.amount, payment_method: 'cash', bank_id: null,
-      created_by: currentUser.name, comment: '', time: new Date().toTimeString().slice(0, 5),
-    }]);
+    if (!cat) { showToast('Нет такой категории', 'error'); return; }
+    db.addTransactions([{ type: 'income', category_id: cat.id, amount: q.amount, payment_method: 'cash', bank_id: null, comment: '' }]);
     showToast(`${q.label} — записано ✓`);
   };
 
   // Вчерашняя оплата пришла/нашлась после закрытия смены → перекидываем на сегодня
   const moveToToday = (t) => {
-    setTransactions(prev => prev.map(x => x.id === t.id ? { ...x, op_date: TODAY_D, moved_from: opDate } : x));
+    db.moveTxToToday(t);
     showToast(`«${catName(t.category_id)} ${fmt(t.amount)} ₽» перенесена на сегодня ↪`);
   };
 
   const closeShift = () => {
     if (cashFact === '') { showToast('Введи фактический остаток в кассе', 'error'); return; }
     const diff = +cashFact - cashCalc;
-    setDayClosures(prev => [...prev, { date: opDate, cash_fact: +cashFact, cash_calc: cashCalc, diff, closed_by: currentUser.name }]);
+    db.closeShift({ date: opDate, cash_calc: cashCalc, cash_fact: +cashFact, diff });
     setCashFact('');
     showToast(diff === 0 ? 'Смена закрыта, касса сошлась ✓' : `Смена закрыта, разница ${diff > 0 ? '+' : ''}${fmt(diff)} ₽`, diff === 0 ? 'ok' : 'error');
   };
@@ -234,7 +234,7 @@ function EmployeeView(props) {
         <h1 style={{ fontSize: 34, fontWeight: 500, margin: 0 }}>Финансы</h1>
         {/* Доступ: только сегодня и вчера */}
         <div style={{ display: 'flex', background: '#fff', borderRadius: 999, padding: 5, boxShadow: UI.shadow }}>
-          {[[TODAY_D, 'Сегодня · 14.07'], [YESTERDAY_D, 'Вчера · 13.07']].map(([d, l]) => (
+          {[[TODAY_D, `Сегодня · ${TODAY_D.slice(8, 10)}.${TODAY_D.slice(5, 7)}`], [YESTERDAY_D, `Вчера · ${YESTERDAY_D.slice(8, 10)}.${YESTERDAY_D.slice(5, 7)}`]].map(([d, l]) => (
             <button key={d} onClick={() => setOpDate(d)} style={{
               border: 'none', borderRadius: 999, padding: '9px 16px', fontSize: 13, fontWeight: 700,
               background: opDate === d ? UI.dark : 'transparent', color: opDate === d ? '#fff' : UI.dark,
@@ -259,7 +259,7 @@ function EmployeeView(props) {
           </div>
           <div style={{ borderTop: `1px solid ${UI.line}`, marginBottom: 16 }} />
           <EntryForm {...props} onSave={(recs) => {
-            setTransactions(prev => [...prev, ...recs]);
+            db.addTransactions(recs);
             showToast(recs.length > 1 ? `Записано ${recs.length} статьями ✓` : 'Записано ✓');
           }} />
         </div>
@@ -297,7 +297,7 @@ function EmployeeView(props) {
 
           {/* Закрытие смены */}
           <div style={{ background: UI.dark, color: '#fff', borderRadius: 26, padding: 24 }}>
-            <div style={{ fontWeight: 800, marginBottom: 10 }}>Закрытие смены · {isToday ? '14.07' : '13.07'}</div>
+            <div style={{ fontWeight: 800, marginBottom: 10 }}>Закрытие смены · {opDate.slice(8, 10)}.{opDate.slice(5, 7)}</div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,.14)' }}>
               <span style={{ opacity: .75 }}>Наличных за день (расчётно)</span>
               <span style={{ fontWeight: 800 }}>{fmt(cashCalc)} ₽</span>
@@ -337,9 +337,9 @@ function EmployeeView(props) {
 const RU_DATE = (d) => `${+d.slice(8, 10)} ${['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'][+d.slice(5, 7) - 1]}`;
 
 function OwnerView(props) {
-  const { transactions, setTransactions, categories, banks, tasks, demoBankRows, dayClosures, UI, PAYMENT_METHODS, showToast } = props;
+  const { transactions, categories, banks, tasks, demoBankRows, dayClosures, db, UI, PAYMENT_METHODS, showToast } = props;
   const [showAddOp, setShowAddOp] = useState(false);
-  const [opDate, setOpDate] = useState('2026-07-14'); // история дней: смотрим любой день
+  const [opDate, setOpDate] = useState(props.db.today); // история дней: смотрим любой день
   const [txQuery, setTxQuery] = useState('');
   const [txType, setTxType] = useState(''); // '' | income | expense
 
@@ -348,7 +348,7 @@ function OwnerView(props) {
     d.setDate(d.getDate() + dir);
     setOpDate(d.toISOString().slice(0, 10));
   };
-  const isToday = opDate === '2026-07-14';
+  const isToday = opDate === db.today;
 
   const catName = (id) => categories.find(c => c.id === id)?.name || '?';
   const bankName = (id) => banks.find(b => b.id === id)?.name;
@@ -391,7 +391,7 @@ function OwnerView(props) {
 
   // Вчерашняя оплата нашлась после закрытия смены → перенос на сегодня
   const moveToToday = (t) => {
-    setTransactions(prev => prev.map(x => x.id === t.id ? { ...x, op_date: '2026-07-14', moved_from: opDate } : x));
+    db.moveTxToToday(t);
     showToast(`«${catName(t.category_id)} ${fmt(t.amount)} ₽» перенесена на сегодня ↪`);
   };
 
@@ -412,7 +412,7 @@ function OwnerView(props) {
             {RU_DATE(opDate)}{isToday ? ' · сегодня' : ''}
           </span>
           <button onClick={() => shiftDay(1)} disabled={isToday} style={{ border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 14, opacity: isToday ? 0.3 : 1 }}>→</button>
-          <input type="date" value={opDate} max="2026-07-14" onChange={e => e.target.value && setOpDate(e.target.value)} style={{
+          <input type="date" value={opDate} max={db.today} onChange={e => e.target.value && setOpDate(e.target.value)} style={{
             border: 'none', background: UI.soft, borderRadius: 999, padding: '7px 12px', fontSize: 13, outline: 'none', fontFamily: 'inherit',
           }} />
         </div>
@@ -578,7 +578,7 @@ function OwnerView(props) {
               <button onClick={() => setShowAddOp(false)} style={{ marginLeft: 'auto', border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 15 }}>✕</button>
             </div>
             <EntryForm {...props} isOwner onSave={(recs) => {
-              setTransactions(prev => [...prev, ...recs]);
+              db.addTransactions(recs);
               setShowAddOp(false);
               showToast(recs.length > 1 ? `Записано ${recs.length} статьями ✓` : 'Записано ✓');
             }} />

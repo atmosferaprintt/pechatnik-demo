@@ -6,7 +6,7 @@ import { useState } from 'react';
 const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
 const TODAY = new Date().toISOString().slice(0, 10);
 
-export default function Supply({ supply, setSupply, currentUser, UI, showToast }) {
+export default function Supply({ supply, db, UI, showToast }) {
   const [text, setText] = useState('');
   const [query, setQuery] = useState('');
 
@@ -17,19 +17,17 @@ export default function Supply({ supply, setSupply, currentUser, UI, showToast }
 
   const add = () => {
     if (!text.trim()) { showToast('Напиши, что заканчивается', 'error'); return; }
-    setSupply(prev => [...prev, {
-      id: Math.max(0, ...prev.map(s => s.id)) + 1, text: text.trim(), author: currentUser.name, date: TODAY, bought: false,
-    }]);
+    db.addSupplyItem(text.trim());
     setText('');
     showToast('Записано в поставку ✓');
   };
 
   const toggle = (s) => {
-    setSupply(prev => prev.map(x => x.id === s.id ? { ...x, bought: !x.bought } : x));
+    db.toggleSupplyItem(s);
     showToast(s.bought ? 'Вернула в список ↩' : 'Отмечено купленным ✓');
   };
 
-  const remove = (s) => setSupply(prev => prev.filter(x => x.id !== s.id));
+  const remove = (s) => db.removeSupplyItem(s);
 
   return (
     <div>

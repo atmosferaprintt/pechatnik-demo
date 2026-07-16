@@ -6,9 +6,12 @@ const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
 const TODAY = new Date().toISOString().slice(0, 10);
 const TOMORROW = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
 
-export default function Dashboard({ transactions, tasks, clients, demoBankRows, UI, onOpenTab }) {
-  const income = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-  const expense = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+export default function Dashboard({ transactions, tasks, clients, categories, dayClosures, demoBankRows, db, UI, onOpenTab }) {
+  // Цифры дня: доход без депозит-оплат, расход — только бизнес (без личных)
+  const dayTx = transactions.filter(t => t.op_date === db.today);
+  const kindOf = (t) => categories.find(c => c.id === t.category_id)?.kind;
+  const income = dayTx.filter(t => t.type === 'income' && t.payment_method !== 'deposit').reduce((s, t) => s + t.amount, 0);
+  const expense = dayTx.filter(t => t.type === 'expense' && kindOf(t) !== 'expense_personal').reduce((s, t) => s + t.amount, 0);
 
   const paidByTask = (id) => transactions.filter(t => t.task_id === id && t.type === 'income').reduce((s, t) => s + t.amount, 0);
   const debtors = tasks
@@ -21,12 +24,13 @@ export default function Dashboard({ transactions, tasks, clients, demoBankRows, 
   const unmatched = demoBankRows.filter(r => !r.matched);
   const clientName = (id) => clients.find(c => c.id === id)?.name?.split('·')[0]?.trim() || '—';
 
-  // Демо: вчерашний день не закрыт (day_closures пустая)
-  const unclosedDays = ['2026-07-13'];
+  // Вчерашняя смена не закрыта — напоминание
+  const unclosedDays = dayClosures.some(c => c.date === db.yesterday) ? [] : [db.yesterday];
+  const RU_D = (d) => `${+d.slice(8, 10)} ${['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'][+d.slice(5, 7) - 1]}`;
 
   return (
     <div>
-      <h1 style={{ fontSize: 34, fontWeight: 500, margin: '4px 0 20px' }}>Мой день · 14 июля</h1>
+      <h1 style={{ fontSize: 34, fontWeight: 500, margin: '4px 0 20px' }}>Мой день · {RU_D(db.today)}</h1>
 
       {/* Предупреждения — самое важное сверху */}
       {(unclosedDays.length > 0 || unmatched.length > 0) && (

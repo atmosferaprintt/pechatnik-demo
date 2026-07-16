@@ -9,7 +9,7 @@ const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
 const TODAY = new Date().toISOString().slice(0, 10);
 const FIN_DAY = '2026-07-14'; // демо-день финансов
 
-export default function Deposits({ deposits, setDeposits, tasks, transactions, setTransactions, currentUser, UI, showToast }) {
+export default function Deposits({ deposits, tasks, db, UI, showToast }) {
   const [query, setQuery] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState('');
@@ -28,9 +28,7 @@ export default function Deposits({ deposits, setDeposits, tasks, transactions, s
 
   const addDeposit = () => {
     if (!name.trim() || !+total) { showToast('Укажи имя и сумму', 'error'); return; }
-    setDeposits(prev => [...prev, {
-      id: Math.max(0, ...prev.map(d => d.id)) + 1, name: name.trim(), total: +total, created_at: TODAY, uses: [],
-    }]);
+    db.addDeposit({ name: name.trim(), total: +total });
     setName(''); setTotal(''); setShowAdd(false);
     showToast('Депозит заведён ✓');
   };
@@ -41,32 +39,17 @@ export default function Deposits({ deposits, setDeposits, tasks, transactions, s
     if (+useAmount > left(d)) { showToast(`На депозите только ${fmt(left(d))} ₽`, 'error'); return; }
     const taskId = useTaskId ? +useTaskId : null;
     const what = useWhat.trim() || taskTitle(taskId) || '';
-
-    setDeposits(prev => prev.map(x => x.id === d.id
-      ? { ...x, uses: [...x.uses, { date: TODAY, what, amount: +useAmount, task_id: taskId }] }
-      : x));
-
-    // Привязана задача → создаём оплату способом «Депозит»: долг задачи гаснет,
+    // Привязана задача → db создаст и оплату способом «Депозит»: долг задачи гаснет,
     // но в доходы дня и сверку это не попадает (деньги пришли при внесении депозита)
-    if (taskId) {
-      const task = tasks.find(t => t.id === taskId);
-      setTransactions(prev => [...prev, {
-        id: Math.max(0, ...transactions.map(t => t.id), ...prev.map(t => t.id)) + 1, op_date: FIN_DAY, type: 'income',
-        category_id: null, amount: +useAmount, payment_method: 'deposit', bank_id: null,
-        task_id: taskId, client_id: task?.client_id || null,
-        comment: `с депозита «${d.name}»`, created_by: currentUser.name,
-        time: new Date().toTimeString().slice(0, 5),
-      }]);
-    }
-
+    db.addDepositUse(d, { what, amount: +useAmount, taskId });
     setUseWhat(''); setUseAmount(''); setUseTaskId(''); setUseFor(null);
     showToast(taskId ? 'Списано, оплата привязана к задаче ✓' : 'Списание записано ✓');
   };
 
   const topUp = (d) => {
-    const add = prompt(`Пополнить депозит «${d.name}» на сумму, ₽:`); // временно для демо, в проде будет модалка
+    const add = prompt(`Пополнить депозит «${d.name}» на сумму, ₽:`); // в проде заменить на модалку
     if (add && +add > 0) {
-      setDeposits(prev => prev.map(x => x.id === d.id ? { ...x, total: x.total + +add } : x));
+      db.topUpDeposit(d, +add);
       showToast(`Депозит пополнен на ${fmt(+add)} ₽ ✓`);
     }
   };

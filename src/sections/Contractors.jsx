@@ -38,7 +38,7 @@ export default function Contractors(props) {
 }
 
 // ---------- Канбан задач контрагентам ----------
-function ContractorBoard({ contractors, contractorTasks, setContractorTasks, CONTRACTOR_STAGES, UI, showToast, query = '' }) {
+function ContractorBoard({ contractors, contractorTasks, db, CONTRACTOR_STAGES, UI, showToast, query = '' }) {
   const [showAdd, setShowAdd] = useState(false);
   const [title, setTitle] = useState('');
   const [contractorId, setContractorId] = useState('');
@@ -52,16 +52,16 @@ function ContractorBoard({ contractors, contractorTasks, setContractorTasks, CON
     e?.stopPropagation();
     const i = CONTRACTOR_STAGES.indexOf(task.stage) + dir;
     if (i < 0 || i >= CONTRACTOR_STAGES.length) return;
-    setContractorTasks(prev => prev.map(t => t.id === task.id ? { ...t, stage: CONTRACTOR_STAGES[i] } : t));
+    db.setContractorTaskStage(task, CONTRACTOR_STAGES[i]);
     showToast(`«${task.title}» → ${CONTRACTOR_STAGES[i]}`);
   };
 
   const add = () => {
     if (!title.trim() || !contractorId) { showToast('Укажи название и подрядчика', 'error'); return; }
-    setContractorTasks(prev => [...prev, {
-      id: Math.max(0, ...prev.map(t => t.id)) + 1, title: title.trim(), contractor_id: +contractorId,
+    db.addContractorTask({
+      title: title.trim(), contractor_id: +contractorId,
       amount: +amount || null, deadline: deadline || null, stage: 'Новая', task_id: null, comment: comment.trim(),
-    }]);
+    });
     setTitle(''); setContractorId(''); setAmount(''); setDeadline(''); setComment(''); setShowAdd(false);
     showToast('Задача подрядчику создана ✓');
   };
@@ -155,7 +155,7 @@ function ContractorBoard({ contractors, contractorTasks, setContractorTasks, CON
 }
 
 // ---------- Список подрядчиков ----------
-function ContractorList({ contractors, setContractors, contractorTasks, tasks, clients, UI, showToast, query = '' }) {
+function ContractorList({ contractors, contractorTasks, tasks, clients, db, UI, showToast, query = '' }) {
   const visibleContractors = contractors.filter(c => {
     const q = query.trim().toLowerCase();
     return !q || c.name.toLowerCase().includes(q) || (c.service || '').toLowerCase().includes(q);
@@ -173,9 +173,7 @@ function ContractorList({ contractors, setContractors, contractorTasks, tasks, c
 
   const add = () => {
     if (!name.trim()) { showToast('Укажи название', 'error'); return; }
-    setContractors(prev => [...prev, {
-      id: Math.max(0, ...prev.map(c => c.id)) + 1, name: name.trim(), service: service.trim(), phone: phone.trim(),
-    }]);
+    db.addContractor({ name: name.trim(), service: service.trim(), phone: phone.trim() });
     setName(''); setService(''); setPhone(''); setShowAdd(false);
     showToast('Контрагент добавлен ✓');
   };

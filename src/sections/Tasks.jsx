@@ -26,7 +26,7 @@ function deadlineStatus(t) {
   return 'ok';
 }
 
-export default function Tasks({ tasks, setTasks, clients, contractors, transactions, setTransactions, categories, banks, currentUser, PAYMENT_METHODS, PEOPLE_COLUMNS, manualDebts, setManualDebts, UI, showToast }) {
+export default function Tasks({ tasks, clients, contractors, transactions, categories, banks, currentUser, db, PAYMENT_METHODS, PEOPLE_COLUMNS, manualDebts, UI, showToast }) {
   const [openTask, setOpenTask] = useState(null);
   const [view, setView] = useState('board'); // board | debts | done
   const [query, setQuery] = useState('');
@@ -68,9 +68,7 @@ export default function Tasks({ tasks, setTasks, clients, contractors, transacti
   const finishTask = (task, e) => {
     e?.stopPropagation();
     const debt = taskDebt(task);
-    setTasks(prev => prev.map(t => t.id === task.id
-      ? { ...t, done: true, log: [...(t.log || []), { who: currentUser.name, action: '✓ завершила', time: NOW() }] }
-      : t));
+    db.updateTask(task, { done: true }, { who: currentUser.name, action: '✓ завершила' });
     setOpenTask(null);
     showToast(debt > 0 ? `«${task.title}» завершена → 💸 Долги (${fmt(debt)})` : `«${task.title}» завершена ✓`);
   };
@@ -81,46 +79,38 @@ export default function Tasks({ tasks, setTasks, clients, contractors, transacti
 
   const addDebtor = () => {
     if (!newDebtorName.trim()) { showToast('Укажи имя', 'error'); return; }
-    setManualDebts(prev => [...prev, { id: Math.max(0, ...prev.map(d => d.id)) + 1, name: newDebtorName.trim(), entries: [] }]);
+    db.addDebtor(newDebtorName.trim());
     setNewDebtorName(''); setShowAddDebtor(false);
     showToast('Должник добавлен ✓');
   };
 
   const addDebtEntry = (d) => {
     if (!+mdAmount) { showToast('Укажи сумму', 'error'); return; }
-    setManualDebts(prev => prev.map(x => x.id === d.id
-      ? { ...x, entries: [...x.entries, { date: TODAY, what: mdWhat.trim() || (mdForm.sign > 0 ? 'оплата' : ''), amount: mdForm.sign * Math.abs(+mdAmount) }] }
-      : x));
+    db.addDebtEntry(d, { what: mdWhat.trim() || (mdForm.sign > 0 ? 'оплата' : ''), amount: mdForm.sign * Math.abs(+mdAmount) });
     setMdForm(null); setMdWhat(''); setMdAmount('');
     showToast(mdForm.sign > 0 ? 'Оплата записана ✓' : 'Записано в долг ✓');
   };
 
   const removeDebtor = (d) => {
-    setManualDebts(prev => prev.filter(x => x.id !== d.id));
+    db.removeDebtor(d);
     showToast(`${d.name} — убрана из должников`);
   };
 
   const reopenTask = (task) => {
-    setTasks(prev => prev.map(t => t.id === task.id
-      ? { ...t, done: false, log: [...(t.log || []), { who: currentUser.name, action: '↩ вернула в работу', time: NOW() }] }
-      : t));
+    db.updateTask(task, { done: false }, { who: currentUser.name, action: '↩ вернула в работу' });
     showToast(`«${task.title}» снова в работе ↩`);
   };
 
   // Передать задачу другому человеку — с записью в историю
   const transfer = (task, to) => {
     if (!to || to === task.assignee) return;
-    setTasks(prev => prev.map(t => t.id === task.id
-      ? { ...t, assignee: to, log: [...(t.log || []), { who: task.assignee, action: `→ передала: ${to}`, time: NOW() }] }
-      : t));
+    db.updateTask(task, { assignee: to }, { who: task.assignee, action: `→ передала: ${to}` });
     showToast(`«${task.title}» → ${to}`);
   };
 
   // Отметка действия (бейдж) — пишется в историю от имени текущего пользователя
   const addAction = (task, action) => {
-    setTasks(prev => prev.map(t => t.id === task.id
-      ? { ...t, log: [...(t.log || []), { who: currentUser.name, action, time: NOW() }] }
-      : t));
+    db.addTaskLog(task, action);
     showToast(`Отметка: ${action} ✓`);
   };
 
@@ -132,21 +122,21 @@ export default function Tasks({ tasks, setTasks, clients, contractors, transacti
 
   const savePayment = (t) => {
     if (!payCat || !payAmount) { showToast('Выбери категорию и сумму', 'error'); return; }
-    setTransactions(prev => [...prev, {
-      id: Date.now(), op_date: TODAY, type: 'income', category_id: +payCat, amount: +payAmount,
+    db.addTransactions([{
+      type: 'income', category_id: +payCat, amount: +payAmount,
       payment_method: payMethod, bank_id: payMethod === 'transfer' ? +payBank || null : null,
       task_id: t.id, client_id: t.client_id, comment: t.title,
-      created_by: currentUser.name, time: new Date().toTimeString().slice(0, 5),
     }]);
     setShowPayForm(false);
     showToast('Оплата записана ✓');
   };
 
   const repeatTask = (t) => {
-    setTasks(prev => [...prev, {
-      ...t, id: Math.max(...prev.map(x => x.id)) + 1, assignee: currentUser.name, deadline: null, created_at: TODAY,
-      log: [{ who: currentUser.name, action: 'повторный заказ 🔁', time: NOW() }],
-    }]);
+    db.addTask({
+      title: t.title, description: t.description, client_id: t.client_id, contractor_id: t.contractor_id,
+      amount: t.amount, parts: t.parts || [], deadline: null, assignee: currentUser.name,
+      _firstAction: 'повторный заказ 🔁',
+    });
     setOpenTask(null);
     showToast(`«${t.title}» скопирована к тебе 🔁`);
   };

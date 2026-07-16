@@ -5,7 +5,7 @@ import { useState } from 'react';
 const fmt = (n) => (n || 0).toLocaleString('ru-RU');
 const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
 
-export default function Clients({ clients, setClients, tasks, transactions, categories, UI, showToast }) {
+export default function Clients({ clients, tasks, transactions, categories, db, UI, showToast }) {
   const [query, setQuery] = useState('');
   const [debtorsOnly, setDebtorsOnly] = useState(false);
   const [openClient, setOpenClient] = useState(null);
@@ -14,17 +14,13 @@ export default function Clients({ clients, setClients, tasks, transactions, cate
 
   const addPrice = (c) => {
     if (!priceWhat.trim() || !priceVal.trim()) { showToast('Заполни «что» и «цену»', 'error'); return; }
-    setClients(prev => prev.map(x => x.id === c.id
-      ? { ...x, prices: [...(x.prices || []), { what: priceWhat.trim(), price: priceVal.trim() }] }
-      : x));
+    db.updateClientPrices(c, [...(c.prices || []), { what: priceWhat.trim(), price: priceVal.trim() }]);
     setPriceWhat(''); setPriceVal('');
     showToast('Цена записана ✓');
   };
 
   const removePrice = (c, i) => {
-    setClients(prev => prev.map(x => x.id === c.id
-      ? { ...x, prices: x.prices.filter((_, idx) => idx !== i) }
-      : x));
+    db.updateClientPrices(c, c.prices.filter((_, idx) => idx !== i));
   };
 
   const clientTasks = (id) => tasks.filter(t => t.client_id === id);

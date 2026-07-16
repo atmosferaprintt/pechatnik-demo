@@ -197,6 +197,10 @@ const DEMO_BANK_ROWS = [
   { id: 3, amount: 2400, matched: false, description: 'СБП Сбер 15:37 — ??? не записано' },
 ];
 
+// Реальные «сегодня/вчера» считаются один раз при загрузке приложения
+const REAL_TODAY = new Date().toISOString().slice(0, 10);
+const REAL_YESTERDAY = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+
 // Supabase отдаёт максимум 1000 строк — всегда тянем страницами.
 async function loadAllRows(table, columns = '*', pageSize = 1000, filter = null) {
   const rows = [];
@@ -238,8 +242,8 @@ export default function App() {
   const isOwnerAccount = (currentUser?.role || 'employee') === 'owner';
   const userRole = isOwnerAccount && workMode === 'employee' ? 'employee' : (currentUser?.role || 'employee');
   const isOwner = userRole === 'owner';
-  // Колонки задачников = все пользователи (порядок: сотрудницы, Кристи последней)
-  const peopleColumns = users.map(u => u.name);
+  // Колонки задачников = активные пользователи (порядок: сотрудницы, Кристи последней)
+  const peopleColumns = users.filter(u => u.is_active !== false).map(u => u.name);
 
   const showToast = useCallback((msg, type = 'ok') => {
     setToast({ msg, type });
@@ -262,15 +266,53 @@ export default function App() {
       .then(({ data }) => setCurrentUser(data));
   }, [session]);
 
-  // ---------- Данные ----------
+  // ---------- Данные: полная загрузка из Supabase + приведение к формату секций ----------
   const loadAll = useCallback(async () => {
     if (DEMO || !session) return;
     setLoading(true);
     try {
-      const [cl, ts, cat, bk] = await Promise.all([
-        loadAllRows('clients'), loadAllRows('tasks'), loadAllRows('categories'), loadAllRows('banks'),
+      const profs = await loadAllRows('profiles');
+      profs.sort((a, b) => (a.role === 'owner') - (b.role === 'owner') || a.sort - b.sort);
+      const nameOf = (id) => profs.find(u => u.id === id)?.name || '—';
+
+      const [cl, ts, logs, cat, bk, ctr, ctrT, dep, depU, md, mdE, sup, dc, tx] = await Promise.all([
+        loadAllRows('clients'), loadAllRows('tasks'), loadAllRows('task_log'),
+        loadAllRows('categories'), loadAllRows('banks'),
+        loadAllRows('contractors'), loadAllRows('contractor_tasks'),
+        loadAllRows('deposits'), loadAllRows('deposit_uses'),
+        loadAllRows('manual_debts'), loadAllRows('manual_debt_entries'),
+        loadAllRows('supply_items'), loadAllRows('day_closures'), loadAllRows('transactions'),
       ]);
-      setClients(cl); setTasks(ts); setCategories(cat); setBanks(bk);
+
+      const hhmm = (t) => (t || '').slice(11, 16);
+      const dOnly = (t) => (t || '').slice(0, 10);
+      const logT = (t) => `${t.slice(8, 10)}.${t.slice(5, 7)} ${hhmm(t)}`;
+
+      setUsers(profs);
+      setCurrentUser(profs.find(u => u.id === session.user.id) || null);
+      setClients(cl.map(c => ({ ...c, prices: c.prices || [] })));
+      setCategories(cat.filter(c => c.is_active).sort((a, b) => a.sort - b.sort));
+      setBanks(bk.filter(b => b.is_active).sort((a, b) => a.sort - b.sort));
+      setContractors(ctr.filter(c => c.is_active));
+      setContractorTasks(ctrT.map(t => ({ ...t, amount: t.amount == null ? null : +t.amount })));
+      setTasks(ts.map(t => ({
+        ...t, amount: t.amount == null ? null : +t.amount, parts: t.parts || [],
+        created_at: dOnly(t.created_at),
+        log: logs.filter(l => l.task_id === t.id).map(l => ({ who: l.who, action: l.action, time: logT(l.created_at) })),
+      })));
+      setDeposits(dep.map(d => ({
+        ...d, total: +d.total, created_at: dOnly(d.created_at),
+        uses: depU.filter(u => u.deposit_id === d.id).map(u => ({ id: u.id, date: u.use_date, what: u.what, amount: +u.amount, task_id: u.task_id })),
+      })));
+      setManualDebts(md.map(d => ({
+        ...d,
+        entries: mdE.filter(e => e.debt_id === d.id).map(e => ({ date: e.entry_date, what: e.what, amount: +e.amount })),
+      })));
+      setSupply(sup.map(s => ({ id: s.id, text: s.text, bought: s.bought, author: nameOf(s.created_by), date: dOnly(s.created_at) })));
+      setDayClosures(dc.map(c => ({ date: c.close_date, cash_fact: +c.cash_fact, cash_calc: +c.cash_calc, diff: +c.diff, closed_by: nameOf(c.closed_by) })));
+      setTransactions(tx.map(t => ({
+        ...t, amount: +t.amount, created_by_id: t.created_by, created_by: nameOf(t.created_by), time: hhmm(t.created_at),
+      })));
     } catch (e) {
       console.error(e);
       showToast('Ошибка загрузки данных: ' + (e.message || e), 'error');
@@ -281,6 +323,19 @@ export default function App() {
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- первичная загрузка данных при входе
   useEffect(() => { loadAll(); }, [loadAll]);
+
+  // Живые обновления: любое изменение в БД (другая сотрудница записала) → перезагрузка с дебаунсом
+  useEffect(() => {
+    if (DEMO || !session) return;
+    let timer;
+    const ch = supabase.channel('crm-live')
+      .on('postgres_changes', { event: '*', schema: 'public' }, () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => loadAll(), 700);
+      })
+      .subscribe();
+    return () => { clearTimeout(timer); supabase.removeChannel(ch); };
+  }, [session, loadAll]);
 
   if (!DEMO && !session) return <LoginScreen showToast={showToast} />;
   if (!DEMO && session && currentUser === null) {
@@ -302,13 +357,253 @@ export default function App() {
     if (next === 'employee' && !TABS.find(t => t.key === tab)?.roles.includes('employee')) setTab('tasks');
   };
 
+  // ---------- Слой данных: секции пишут ТОЛЬКО через db ----------
+  // В проде: запись в Supabase → обновление локального state (+ realtime добьёт остальных).
+  // В демо: только локальный state. Ошибки сервера показываются тостом, наружу не летят.
+  const nextId = (arr) => Math.max(0, ...arr.map(x => +x.id || 0)) + 1;
+  const nowT = () => new Date().toTimeString().slice(0, 5);
+  const logTimeNow = () => { const d = new Date(); return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')} ${nowT()}`; };
+  const fail = (e) => { console.error(e); showToast('Не сохранилось: ' + (e.message || e), 'error'); return null; };
+
+  const db = {
+    today: DEMO ? '2026-07-14' : REAL_TODAY,
+    yesterday: DEMO ? '2026-07-13' : REAL_YESTERDAY,
+    profName: (id) => users.find(u => u.id === id)?.name || '—',
+
+    async addTransactions(recs) { // recs без id/created_by/time — проставляются здесь
+      if (DEMO) {
+        setTransactions(prev => [...prev, ...recs.map((r, i) => ({ id: nextId(prev) + i, created_by: currentUser.name, time: nowT(), op_date: db.today, ...r }))]);
+        return true;
+      }
+      try {
+        const rows = recs.map(({ ...r }) => ({ op_date: db.today, ...r, created_by: currentUser.id }));
+        const { data, error } = await supabase.from('transactions').insert(rows).select();
+        if (error) throw error;
+        setTransactions(prev => [...prev, ...data.map(t => ({ ...t, amount: +t.amount, created_by_id: t.created_by, created_by: currentUser.name, time: (t.created_at || '').slice(11, 16) }))]);
+        return true;
+      } catch (e) { return fail(e); }
+    },
+
+    async moveTxToToday(t) {
+      if (!DEMO) {
+        const { error } = await supabase.from('transactions').update({ op_date: db.today, moved_from: t.op_date }).eq('id', t.id);
+        if (error) return fail(error);
+      }
+      setTransactions(prev => prev.map(x => x.id === t.id ? { ...x, op_date: db.today, moved_from: t.op_date } : x));
+      return true;
+    },
+
+    async closeShift({ date, cash_calc, cash_fact, diff }) {
+      if (!DEMO) {
+        const { error } = await supabase.from('day_closures').insert({ close_date: date, cash_calc, cash_fact, diff, closed_by: currentUser.id });
+        if (error) return fail(error);
+      }
+      setDayClosures(prev => [...prev, { date, cash_calc, cash_fact, diff, closed_by: currentUser.name }]);
+      return true;
+    },
+
+    async addTask(payload) { // {title, client_id, contractor_id, amount, parts, deadline, description, assignee}
+      const log0 = { who: currentUser.name, action: payload._firstAction || 'приняла', time: logTimeNow() };
+      if (DEMO) {
+        let created;
+        setTasks(prev => { created = { id: nextId(prev), done: false, created_at: db.today, log: [log0], parts: [], ...payload }; return [...prev, created]; });
+        return created;
+      }
+      try {
+        const { _firstAction, ...clean } = payload;
+        const { data, error } = await supabase.from('tasks').insert({ ...clean, created_by: currentUser.id }).select().single();
+        if (error) throw error;
+        await supabase.from('task_log').insert({ task_id: data.id, who: log0.who, action: log0.action });
+        const task = { ...data, amount: data.amount == null ? null : +data.amount, parts: data.parts || [], created_at: (data.created_at || '').slice(0, 10), log: [log0] };
+        setTasks(prev => [...prev, task]);
+        return task;
+      } catch (e) { return fail(e); }
+    },
+
+    async updateTask(t, patch, logAction) {
+      if (!DEMO) {
+        const { error } = await supabase.from('tasks').update(patch).eq('id', t.id);
+        if (error) return fail(error);
+        if (logAction) await supabase.from('task_log').insert({ task_id: t.id, who: logAction.who, action: logAction.action });
+      }
+      setTasks(prev => prev.map(x => x.id === t.id
+        ? { ...x, ...patch, log: logAction ? [...(x.log || []), { ...logAction, time: logTimeNow() }] : x.log }
+        : x));
+      return true;
+    },
+
+    async addTaskLog(t, action, who = currentUser.name) {
+      if (!DEMO) {
+        const { error } = await supabase.from('task_log').insert({ task_id: t.id, who, action });
+        if (error) return fail(error);
+      }
+      setTasks(prev => prev.map(x => x.id === t.id ? { ...x, log: [...(x.log || []), { who, action, time: logTimeNow() }] } : x));
+      return true;
+    },
+
+    async updateClientPrices(c, prices) {
+      if (!DEMO) {
+        const { error } = await supabase.from('clients').update({ prices }).eq('id', c.id);
+        if (error) return fail(error);
+      }
+      setClients(prev => prev.map(x => x.id === c.id ? { ...x, prices } : x));
+      return true;
+    },
+
+    async addContractor({ name, service, phone }) {
+      if (DEMO) { setContractors(prev => [...prev, { id: nextId(prev), name, service, phone }]); return true; }
+      try {
+        const { data, error } = await supabase.from('contractors').insert({ name, service, phone }).select().single();
+        if (error) throw error;
+        setContractors(prev => [...prev, data]);
+        return true;
+      } catch (e) { return fail(e); }
+    },
+
+    async addContractorTask(payload) {
+      if (DEMO) { setContractorTasks(prev => [...prev, { id: nextId(prev), stage: 'Новая', ...payload }]); return true; }
+      try {
+        const { data, error } = await supabase.from('contractor_tasks').insert({ ...payload, created_by: currentUser.id }).select().single();
+        if (error) throw error;
+        setContractorTasks(prev => [...prev, { ...data, amount: data.amount == null ? null : +data.amount }]);
+        return true;
+      } catch (e) { return fail(e); }
+    },
+
+    async setContractorTaskStage(t, stage) {
+      if (!DEMO) {
+        const { error } = await supabase.from('contractor_tasks').update({ stage }).eq('id', t.id);
+        if (error) return fail(error);
+      }
+      setContractorTasks(prev => prev.map(x => x.id === t.id ? { ...x, stage } : x));
+      return true;
+    },
+
+    async addDeposit({ name, total }) {
+      if (DEMO) { setDeposits(prev => [...prev, { id: nextId(prev), name, total, created_at: db.today, uses: [] }]); return true; }
+      try {
+        const { data, error } = await supabase.from('deposits').insert({ name, total, created_by: currentUser.id }).select().single();
+        if (error) throw error;
+        setDeposits(prev => [...prev, { ...data, total: +data.total, created_at: (data.created_at || '').slice(0, 10), uses: [] }]);
+        return true;
+      } catch (e) { return fail(e); }
+    },
+
+    async topUpDeposit(d, add) {
+      if (!DEMO) {
+        const { error } = await supabase.from('deposits').update({ total: d.total + add }).eq('id', d.id);
+        if (error) return fail(error);
+      }
+      setDeposits(prev => prev.map(x => x.id === d.id ? { ...x, total: x.total + add } : x));
+      return true;
+    },
+
+    async addDepositUse(d, { what, amount, taskId }) {
+      const use = { date: db.today, what, amount, task_id: taskId || null };
+      if (!DEMO) {
+        const { error } = await supabase.from('deposit_uses').insert({ deposit_id: d.id, use_date: use.date, what, amount, task_id: use.task_id, created_by: currentUser.id });
+        if (error) return fail(error);
+      }
+      setDeposits(prev => prev.map(x => x.id === d.id ? { ...x, uses: [...x.uses, use] } : x));
+      if (taskId) {
+        const task = tasks.find(t => t.id === taskId);
+        await db.addTransactions([{ type: 'income', category_id: null, amount, payment_method: 'deposit', bank_id: null, task_id: taskId, client_id: task?.client_id || null, deposit_id: d.id, comment: `с депозита «${d.name}»` }]);
+      }
+      return true;
+    },
+
+    async addDebtor(name) {
+      if (DEMO) { setManualDebts(prev => [...prev, { id: nextId(prev), name, entries: [] }]); return true; }
+      try {
+        const { data, error } = await supabase.from('manual_debts').insert({ name }).select().single();
+        if (error) throw error;
+        setManualDebts(prev => [...prev, { ...data, entries: [] }]);
+        return true;
+      } catch (e) { return fail(e); }
+    },
+
+    async addDebtEntry(d, { what, amount }) {
+      if (!DEMO) {
+        const { error } = await supabase.from('manual_debt_entries').insert({ debt_id: d.id, entry_date: db.today, what, amount, created_by: currentUser.id });
+        if (error) return fail(error);
+      }
+      setManualDebts(prev => prev.map(x => x.id === d.id ? { ...x, entries: [...x.entries, { date: db.today, what, amount }] } : x));
+      return true;
+    },
+
+    async removeDebtor(d) {
+      if (!DEMO) {
+        const { error } = await supabase.from('manual_debts').delete().eq('id', d.id);
+        if (error) return fail(error);
+      }
+      setManualDebts(prev => prev.filter(x => x.id !== d.id));
+      return true;
+    },
+
+    async addSupplyItem(text) {
+      if (DEMO) { setSupply(prev => [...prev, { id: nextId(prev), text, author: currentUser.name, date: db.today, bought: false }]); return true; }
+      try {
+        const { data, error } = await supabase.from('supply_items').insert({ text, created_by: currentUser.id }).select().single();
+        if (error) throw error;
+        setSupply(prev => [...prev, { id: data.id, text: data.text, bought: data.bought, author: currentUser.name, date: (data.created_at || '').slice(0, 10) }]);
+        return true;
+      } catch (e) { return fail(e); }
+    },
+
+    async toggleSupplyItem(s) {
+      if (!DEMO) {
+        const { error } = await supabase.from('supply_items').update({ bought: !s.bought }).eq('id', s.id);
+        if (error) return fail(error);
+      }
+      setSupply(prev => prev.map(x => x.id === s.id ? { ...x, bought: !x.bought } : x));
+      return true;
+    },
+
+    async removeSupplyItem(s) {
+      if (!DEMO) {
+        const { error } = await supabase.from('supply_items').delete().eq('id', s.id);
+        if (error) return fail(error);
+      }
+      setSupply(prev => prev.filter(x => x.id !== s.id));
+      return true;
+    },
+
+    async addUser({ name, login, password }) {
+      if (DEMO) {
+        setUsers(prev => [...prev.filter(u => u.role === 'employee'), { id: 'u' + (prev.length + 1), name, role: 'employee', login, password }, ...prev.filter(u => u.role === 'owner')]);
+        return true;
+      }
+      try {
+        const { error } = await supabase.rpc('admin_create_user', { p_name: name, p_login: login, p_password: password });
+        if (error) throw error;
+        await loadAll();
+        return true;
+      } catch (e) { return fail(e); }
+    },
+
+    async updateUser(u, { name, login, password, is_active }) {
+      if (DEMO) {
+        setUsers(prev => prev.map(x => x.id === u.id ? { ...x, name: name ?? x.name, login: login ?? x.login, ...(password ? { password } : {}), is_active: is_active ?? x.is_active } : x));
+        if (name && name !== u.name) setTasks(prev => prev.map(t => t.assignee === u.name ? { ...t, assignee: name } : t));
+        return true;
+      }
+      try {
+        const { error } = await supabase.rpc('admin_update_user', {
+          p_id: u.id, p_name: name ?? null, p_login: login ?? null, p_password: password || null, p_is_active: is_active ?? null,
+        });
+        if (error) throw error;
+        await loadAll();
+        return true;
+      } catch (e) { return fail(e); }
+    },
+  };
+
   const visibleTabs = TABS.filter(t => t.roles.includes(userRole));
   const sectionProps = {
-    supabase, currentUser, userRole, isOwner, showToast, onUpdate: loadAll, loadAllRows,
-    clients, setClients, tasks, categories, banks, transactions, contractors, contractorTasks, deposits, setDeposits,
-    manualDebts, setManualDebts, supply, setSupply, dayClosures, setDayClosures,
-    setTasks, setTransactions, setContractors, setContractorTasks, CONTRACTOR_STAGES,
-    PEOPLE_COLUMNS: peopleColumns, users, setUsers, demoBankRows: DEMO_BANK_ROWS,
+    supabase, currentUser, userRole, isOwner, showToast, onUpdate: loadAll, loadAllRows, db,
+    clients, tasks, categories, banks, transactions, contractors, contractorTasks, deposits,
+    manualDebts, supply, dayClosures, CONTRACTOR_STAGES,
+    PEOPLE_COLUMNS: peopleColumns, users, demoBankRows: DEMO ? DEMO_BANK_ROWS : [],
     loading, UI, STAGES, PAYMENT_METHODS, DEMO, isMobile,
   };
 
@@ -398,28 +693,30 @@ function Center({ children }) {
 }
 
 function LoginScreen({ showToast }) {
-  const [email, setEmail] = useState('');
+  const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const login = async (e) => {
+  const doLogin = async (e) => {
     e.preventDefault();
     setBusy(true);
+    // Вход по логину: служебная почта строится сама (login@crm.local)
+    const email = login.includes('@') ? login.trim() : `${login.trim().toLowerCase()}@crm.local`;
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setBusy(false);
-    if (error) showToast('Не удалось войти: ' + error.message, 'error');
+    if (error) showToast('Не удалось войти: проверь логин и пароль', 'error');
   };
 
   const inputStyle = {
     width: '100%', padding: '14px 18px', borderRadius: 16, border: `1px solid ${UI.line}`,
-    fontSize: 15, background: UI.soft, outline: 'none',
+    fontSize: 16, background: UI.soft, outline: 'none',
   };
 
   return (
     <Center>
-      <form onSubmit={login} style={{ background: UI.card, borderRadius: UI.radius, boxShadow: UI.shadow, padding: 36, width: 'min(360px, 100%)', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <form onSubmit={doLogin} style={{ background: UI.card, borderRadius: UI.radius, boxShadow: UI.shadow, padding: 36, width: 'min(360px, 100%)', display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ fontSize: 26, fontWeight: 800, marginBottom: 6 }}>🖨️ ПЕЧАТНИК</div>
-        <input style={inputStyle} type="email" placeholder="Почта" value={email} onChange={e => setEmail(e.target.value)} required />
+        <input style={inputStyle} placeholder="Логин" autoCapitalize="none" value={login} onChange={e => setLogin(e.target.value)} required />
         <input style={inputStyle} type="password" placeholder="Пароль" value={password} onChange={e => setPassword(e.target.value)} required />
         <button disabled={busy} style={{
           border: 'none', borderRadius: 999, padding: '14px 18px', fontSize: 15, fontWeight: 700,

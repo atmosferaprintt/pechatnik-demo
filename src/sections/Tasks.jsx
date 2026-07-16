@@ -1,6 +1,6 @@
-// Раздел «Задачи» — канбан ПО ЛЮДЯМ (просьба Кристи): у каждого свой задачник.
-// «Сборку» убрали 2026-07-16: готовность = бейдж «готово к выдаче» + «✓ Завершить»,
-// сборка у подрядчиков отображается в Контрагентах.
+// Раздел «Задачи» — канбан ПО ЭТАПАМ (Новая → В работе → Производство → Готово, вернули 2026-07-16)
+// + фильтр по людям сверху: сотрудница по умолчанию видит свои задачи.
+// Редактировать (этап, передача, отметки, завершение) можно ТОЛЬКО свои; чужие — просмотр. Владелец — всё.
 // Задачи видны всем и передаются от человека к человеку; действия отмечаются бейджами с историей.
 // Клик по карточке → подробности: клиент, оплата, сроки, состав заказа, история действий.
 // Заглушка на демо-данных.
@@ -20,13 +20,13 @@ const ACTION_PRESETS = ['приняла', 'подготовила к печат�
 // Не тревожим завершённые и те, где последняя отметка — «готово к выдаче» (работа сделана, ждём клиента).
 function deadlineStatus(t) {
   const last = t.log?.length ? t.log[t.log.length - 1].action : '';
-  if (!t.deadline || t.done || last.includes('готово к выдаче')) return 'ok';
+  if (!t.deadline || t.done || t.stage === 'Готово' || last.includes('готово к выдаче')) return 'ok';
   if (t.deadline < TODAY) return 'overdue';
   if (t.deadline <= TOMORROW) return 'soon';
   return 'ok';
 }
 
-export default function Tasks({ tasks, clients, contractors, transactions, categories, banks, currentUser, db, PAYMENT_METHODS, PEOPLE_COLUMNS, manualDebts, UI, showToast }) {
+export default function Tasks({ tasks, clients, contractors, transactions, categories, banks, currentUser, isOwner, db, PAYMENT_METHODS, PEOPLE_COLUMNS, STAGES, manualDebts, UI, showToast }) {
   const [openTask, setOpenTask] = useState(null);
   const [view, setView] = useState('board'); // board | debts | done
   // Форма новой задачи
@@ -39,8 +39,17 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
   const [nContractor, setNContractor] = useState('');
   const [nDesc, setNDesc] = useState('');
   const [nParts, setNParts] = useState([]); // состав заказа: [{name, sum}]
+  // Новый клиент прямо из формы задачи (просьба Кристи): ФИ + телефон + компания → сразу в базу
+  const [ncFio, setNcFio] = useState('');
+  const [ncPhone, setNcPhone] = useState('');
+  const [ncCompany, setNcCompany] = useState('');
   const [query, setQuery] = useState('');
   const [flt, setFlt] = useState(''); // '' | debt | burning
+  // Фильтр по людям: сотрудница сначала видит свои, Кристи — всех
+  const [personFlt, setPersonFlt] = useState(isOwner ? '' : currentUser.name);
+
+  // Редактировать можно только свои задачи (чужие — только смотреть). Владелец — всё.
+  const canEdit = (t) => isOwner || t.assignee === currentUser.name;
   // Ручные должники: формы добавления человека и записи ±
   const [newDebtorName, setNewDebtorName] = useState('');
   const [showAddDebtor, setShowAddDebtor] = useState(false);
@@ -111,6 +120,14 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
     showToast(`«${task.title}» снова в работе ↩`);
   };
 
+  const stageMove = (task, dir, e) => {
+    e?.stopPropagation();
+    const i = STAGES.indexOf(task.stage || 'Новая') + dir;
+    if (i < 0 || i >= STAGES.length) return;
+    db.updateTask(task, { stage: STAGES[i] }, { who: currentUser.name, action: `→ этап: ${STAGES[i]}` });
+    showToast(`«${task.title}» → ${STAGES[i]}`);
+  };
+
   // Передать задачу другому человеку — с записью в историю
   const transfer = (task, to) => {
     if (!to || to === task.assignee) return;
@@ -143,16 +160,35 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
 
   const createTask = async () => {
     if (!nTitle.trim()) { showToast('Укажи название задачи', 'error'); return; }
+
+    // Клиент: выбранный или создаём на месте — и он сразу летит в базу клиентов
+    let clientId = nClient && nClient !== '__new' ? +nClient : null;
+    if (nClient === '__new') {
+      if (!ncFio.trim()) { showToast('Укажи имя клиента', 'error'); return; }
+      const norm = ncPhone.replace(/\D/g, '').slice(-10);
+      const existing = norm && clients.find(c => c.phone_norm === norm);
+      if (existing) {
+        clientId = existing.id;
+        showToast(`Такой телефон уже есть — привязала к «${existing.name}»`);
+      } else {
+        const name = ncCompany.trim() ? `${ncFio.trim()} · ${ncCompany.trim()}` : ncFio.trim();
+        const createdClient = await db.addClient({ name, phone: ncPhone.trim(), instagram: '', note: '' });
+        if (!createdClient) return;
+        clientId = createdClient.id;
+      }
+    }
+
     const parts = nParts.filter(p => p.name.trim() && +p.sum > 0).map(p => ({ name: p.name.trim(), amount: +p.sum }));
     const amount = parts.length ? parts.reduce((s, p) => s + p.amount, 0) : (+nAmount || null);
     const created = await db.addTask({
-      title: nTitle.trim(), client_id: nClient ? +nClient : null, amount, parts,
+      title: nTitle.trim(), client_id: clientId, amount, parts,
       deadline: nDeadline || null, assignee: nAssignee || currentUser.name,
       contractor_id: nContractor ? +nContractor : null, description: nDesc.trim(),
     });
     if (!created) return;
     setShowNew(false);
     setNTitle(''); setNClient(''); setNAmount(''); setNDeadline(''); setNAssignee(''); setNContractor(''); setNDesc(''); setNParts([]);
+    setNcFio(''); setNcPhone(''); setNcCompany('');
     showToast(`Задача создана → ${created.assignee} ✓`);
   };
 
@@ -233,8 +269,19 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
             <input style={inpS(UI)} placeholder="Что делаем (визитки 500 шт…)" value={nTitle} onChange={e => setNTitle(e.target.value)} />
             <select style={inpS(UI)} value={nClient} onChange={e => setNClient(e.target.value)}>
               <option value="">Клиент (необязательно)…</option>
+              <option value="__new">➕ Новый клиент…</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
+            {nClient === '__new' && (
+              <div style={{ background: 'rgba(247,214,74,.15)', border: `1.5px solid ${UI.accent}`, borderRadius: 16, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <input style={inpS(UI)} placeholder="Фамилия Имя *" value={ncFio} onChange={e => setNcFio(e.target.value)} />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input style={{ ...inpS(UI), flex: 1, minWidth: 0 }} placeholder="Телефон" value={ncPhone} onChange={e => setNcPhone(e.target.value)} />
+                  <input style={{ ...inpS(UI), flex: 1, minWidth: 0 }} placeholder="Компания" value={ncCompany} onChange={e => setNcCompany(e.target.value)} />
+                </div>
+                <div style={{ color: UI.muted, fontSize: 12 }}>Клиент сразу попадёт в базу и привяжется к задаче</div>
+              </div>
+            )}
 
             {/* Сумма: одним числом или составом заказа (печать/дизайн…) */}
             {nParts.length === 0 ? (
@@ -265,11 +312,17 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
             )}
 
             <div style={{ display: 'flex', gap: 8 }}>
-              <input style={{ ...inpS(UI), flex: 1, minWidth: 0 }} type="date" value={nDeadline} onChange={e => setNDeadline(e.target.value)} />
-              <select style={{ ...inpS(UI), flex: 1, minWidth: 0 }} value={nAssignee} onChange={e => setNAssignee(e.target.value)}>
-                <option value="">Кому: {currentUser.name} (я)</option>
-                {PEOPLE_COLUMNS.filter(p => p !== currentUser.name).map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.muted, textTransform: 'uppercase', letterSpacing: 0.4, margin: '0 0 4px 6px' }}>⏰ Дедлайн</div>
+                <input style={{ ...inpS(UI) }} type="date" value={nDeadline} onChange={e => setNDeadline(e.target.value)} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.muted, textTransform: 'uppercase', letterSpacing: 0.4, margin: '0 0 4px 6px' }}>👤 В задачник</div>
+                <select style={{ ...inpS(UI) }} value={nAssignee} onChange={e => setNAssignee(e.target.value)}>
+                  <option value="">{currentUser.name} (я)</option>
+                  {PEOPLE_COLUMNS.filter(p => p !== currentUser.name).map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
             </div>
             <select style={inpS(UI)} value={nContractor} onChange={e => setNContractor(e.target.value)}>
               <option value="">🏭 Контрагент, если перезаказ (необязательно)…</option>
@@ -300,6 +353,19 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
             border: 'none', background: 'transparent', color: UI.muted, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
           }}>сбросить ✕</button>
         )}
+        {/* Фильтр по людям: свои — первыми */}
+        <span style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginLeft: 'auto' }}>
+          <button onClick={() => setPersonFlt('')} style={{
+            border: 'none', borderRadius: 999, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, boxShadow: UI.shadow,
+            background: personFlt === '' ? UI.dark : '#fff', color: personFlt === '' ? '#fff' : UI.dark,
+          }}>Все</button>
+          {[currentUser.name, ...PEOPLE_COLUMNS.filter(p => p !== currentUser.name)].map(p => (
+            <button key={p} onClick={() => setPersonFlt(v => v === p ? '' : p)} style={{
+              border: 'none', borderRadius: 999, padding: '8px 13px', fontSize: 12.5, fontWeight: 700, boxShadow: UI.shadow,
+              background: personFlt === p ? UI.dark : '#fff', color: personFlt === p ? '#fff' : UI.dark,
+            }}>{p === currentUser.name ? `${p} (я)` : p}</button>
+          ))}
+        </span>
       </div>
 
       {/* Списки долгов и завершённых — отдельно от доски */}
@@ -402,30 +468,36 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
 
       {view === 'board' && (
       <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', overflowX: 'auto', paddingBottom: 8 }}>
-        {PEOPLE_COLUMNS.map(person => {
-          const inCol = activeTasks.filter(t => t.assignee === person);
+        {STAGES.map((stage, si) => {
+          const inCol = activeTasks.filter(t => (t.stage || 'Новая') === stage && (!personFlt || t.assignee === personFlt));
           const sum = inCol.reduce((s, t) => s + (t.amount || 0), 0);
           return (
-            <div key={person} style={{ minWidth: 205, flex: 1, background: UI.soft, borderRadius: 20, padding: 10 }}>
+            <div key={stage} style={{ minWidth: 230, flex: 1, background: stage === 'Готово' ? '#f0ecdf' : UI.soft, borderRadius: 20, padding: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '0 2px' }}>
-                <span style={{
-                  width: 30, height: 30, borderRadius: '50%', background: UI.dark, color: '#fff',
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  fontWeight: 800, fontSize: 13, flexShrink: 0,
-                }}>{person[0]}</span>
-                <span style={{ fontWeight: 800, fontSize: 14 }}>{person}</span>
+                <span style={{ fontWeight: 800, fontSize: 14 }}>{stage}</span>
                 <span style={{ background: UI.dark, color: '#fff', borderRadius: 999, fontSize: 11.5, fontWeight: 700, padding: '2px 8px' }}>{inCol.length}</span>
                 {sum > 0 && <span style={{ marginLeft: 'auto', color: UI.muted, fontSize: 11.5, fontWeight: 600 }}>{fmt(sum)}</span>}
               </div>
 
               {inCol.map(t => {
                 const lastAction = t.log?.length ? t.log[t.log.length - 1] : null;
+                const mine = canEdit(t);
                 return (
-                  // Компактная карточка (просьба Кристи: «чтоб долго скролить не пришлось»)
-                  <div key={t.id} onClick={() => { setOpenTask(t); setShowPayForm(false); }} style={{ background: '#fff', borderRadius: 15, padding: '9px 10px 8px', marginBottom: 7, boxShadow: UI.shadow, cursor: 'pointer' }}>
-                    <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 2, lineHeight: 1.25 }}>{t.title}</div>
+                  // Компактная карточка; чужие — только просмотр (без кнопок)
+                  <div key={t.id} onClick={() => { setOpenTask(t); setShowPayForm(false); }} style={{
+                    background: '#fff', borderRadius: 15, padding: '9px 10px 8px', marginBottom: 7, boxShadow: UI.shadow, cursor: 'pointer',
+                    opacity: personFlt || mine ? 1 : 0.75,
+                  }}>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                      <span style={{ fontWeight: 700, fontSize: 12.5, lineHeight: 1.25 }}>{t.title}</span>
+                      <span title={t.assignee} style={{
+                        marginLeft: 'auto', flexShrink: 0, width: 20, height: 20, borderRadius: '50%',
+                        background: mine ? UI.accent : UI.dark, color: mine ? UI.dark : '#fff',
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10.5, fontWeight: 800,
+                      }}>{t.assignee?.[0]}</span>
+                    </div>
                     <div style={{ color: UI.muted, fontSize: 11, marginBottom: 5 }}>
-                      {clientShort(t.client_id)}
+                      {t.assignee} · {clientShort(t.client_id)}
                       {t.contractor_id && <> · 🏭 {contractors.find(c => c.id === t.contractor_id)?.name}</>}
                       {lastAction && <> · <span style={{ fontWeight: 600 }}>{lastAction.action}</span></>}
                     </div>
@@ -433,18 +505,20 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                       <span style={{ background: UI.soft, borderRadius: 999, padding: '2px 7px', fontSize: 11, fontWeight: 700 }}>{fmt(t.amount)}</span>
                       <PayChip t={t} small />
                       <DeadlineChip t={t} small />
-                      {/* Передать / завершить — не открывая карточку */}
-                      <select value="" onClick={e => e.stopPropagation()} onChange={e => transfer(t, e.target.value)} title="Передать" style={{
-                        marginLeft: 'auto', border: 'none', background: UI.soft, borderRadius: 999, width: 34,
-                        padding: '3px 6px', fontSize: 11, fontWeight: 700, outline: 'none', cursor: 'pointer',
-                      }}>
-                        <option value="">→</option>
-                        {PEOPLE_COLUMNS.filter(p => p !== person).map(p => <option key={p} value={p}>{p}</option>)}
-                      </select>
-                      <button title="Завершить задачу" onClick={(e) => finishTask(t, e)} style={{
-                        border: 'none', background: UI.soft, borderRadius: 999,
-                        padding: '3px 9px', fontSize: 11.5, fontWeight: 800, flexShrink: 0,
-                      }}>✓</button>
+                      {mine && (
+                        <span style={{ marginLeft: 'auto', display: 'flex', gap: 4, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                          <button disabled={si === 0} title="Предыдущий этап" onClick={(e) => stageMove(t, -1, e)} style={{
+                            border: 'none', background: UI.soft, borderRadius: 999, padding: '3px 8px', fontSize: 11, opacity: si === 0 ? 0.3 : 1,
+                          }}>←</button>
+                          <button disabled={si === STAGES.length - 1} title="Следующий этап" onClick={(e) => stageMove(t, 1, e)} style={{
+                            border: 'none', background: UI.soft, borderRadius: 999, padding: '3px 8px', fontSize: 11, opacity: si === STAGES.length - 1 ? 0.3 : 1,
+                          }}>→</button>
+                          <button title="Завершить задачу (выдана)" onClick={(e) => finishTask(t, e)} style={{
+                            border: 'none', background: stage === 'Готово' ? UI.accent : UI.soft, borderRadius: 999,
+                            padding: '3px 9px', fontSize: 11.5, fontWeight: 800,
+                          }}>✓</button>
+                        </span>
+                      )}
                     </div>
                   </div>
                 );
@@ -478,13 +552,32 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                 <button onClick={() => setOpenTask(null)} style={{ marginLeft: 'auto', border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 15, flexShrink: 0 }}>✕</button>
               </div>
 
-              {/* У кого задача — передача пилюлями */}
-              <div style={{ fontSize: 12, fontWeight: 700, color: UI.muted, textTransform: 'uppercase', letterSpacing: 0.4, margin: '12px 0 6px' }}>У кого сейчас</div>
+              {!canEdit(t) && (
+                <div style={{ background: UI.soft, borderRadius: 14, padding: '10px 14px', fontSize: 13, margin: '12px 0 4px', color: UI.muted }}>
+                  👁 Задача {t.assignee} — только просмотр
+                </div>
+              )}
+
+              {/* Этап заказа */}
+              <div style={{ fontSize: 12, fontWeight: 700, color: UI.muted, textTransform: 'uppercase', letterSpacing: 0.4, margin: '12px 0 6px' }}>Этап</div>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+                {STAGES.map(st => (
+                  <button key={st} disabled={!canEdit(t)} onClick={() => canEdit(t) && st !== (t.stage || 'Новая') && db.updateTask(t, { stage: st }, { who: currentUser.name, action: `→ этап: ${st}` })} style={{
+                    border: 'none', borderRadius: 999, padding: '8px 14px', fontSize: 12.5, fontWeight: 700,
+                    background: (t.stage || 'Новая') === st ? UI.dark : UI.soft, color: (t.stage || 'Новая') === st ? '#fff' : UI.dark,
+                    opacity: canEdit(t) || (t.stage || 'Новая') === st ? 1 : 0.5, cursor: canEdit(t) ? 'pointer' : 'default',
+                  }}>{st}</button>
+                ))}
+              </div>
+
+              {/* У кого задача — передача пилюлями (только своей) */}
+              <div style={{ fontSize: 12, fontWeight: 700, color: UI.muted, textTransform: 'uppercase', letterSpacing: 0.4, margin: '0 0 6px' }}>У кого сейчас</div>
               <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
                 {PEOPLE_COLUMNS.map(p => (
-                  <button key={p} onClick={() => transfer(t, p)} style={{
+                  <button key={p} disabled={!canEdit(t)} onClick={() => canEdit(t) && transfer(t, p)} style={{
                     border: 'none', borderRadius: 999, padding: '8px 14px', fontSize: 12.5, fontWeight: 700,
                     background: t.assignee === p ? UI.dark : UI.soft, color: t.assignee === p ? '#fff' : UI.dark,
+                    opacity: canEdit(t) || t.assignee === p ? 1 : 0.5, cursor: canEdit(t) ? 'pointer' : 'default',
                   }}>{p}</button>
                 ))}
               </div>
@@ -498,16 +591,20 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                 <Fact label="У кого" value={t.assignee} UI={UI} />
               </div>
 
-              {/* Отметки действий */}
-              <div style={{ fontSize: 12, fontWeight: 700, color: UI.muted, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Отметить действие</div>
-              <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
-                {ACTION_PRESETS.map(a => (
-                  <button key={a} onClick={() => addAction(t, a)} style={{
-                    border: `1.5px solid ${UI.accent}`, background: 'rgba(247,214,74,.15)', borderRadius: 999,
-                    padding: '7px 13px', fontSize: 12.5, fontWeight: 600,
-                  }}>+ {a}</button>
-                ))}
-              </div>
+              {/* Отметки действий — только на своих задачах */}
+              {canEdit(t) && (
+                <>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: UI.muted, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Отметить действие</div>
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
+                    {ACTION_PRESETS.map(a => (
+                      <button key={a} onClick={() => addAction(t, a)} style={{
+                        border: `1.5px solid ${UI.accent}`, background: 'rgba(247,214,74,.15)', borderRadius: 999,
+                        padding: '7px 13px', fontSize: 12.5, fontWeight: 600,
+                      }}>+ {a}</button>
+                    ))}
+                  </div>
+                </>
+              )}
 
               {/* История действий и передач */}
               {t.log?.length > 0 && (
@@ -612,7 +709,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                       flex: 1, border: 'none', background: UI.accent, color: UI.dark, borderRadius: 999, padding: '13px 0', fontWeight: 800, fontSize: 14, minWidth: 200,
                     }}>💰 Записать оплату ({fmt(debt)})</button>
                   )}
-                  {t.done ? (
+                  {canEdit(t) && (t.done ? (
                     <button onClick={() => reopenTask(t)} style={{
                       border: 'none', background: UI.soft, borderRadius: 999, padding: '13px 18px', fontWeight: 700, fontSize: 14,
                     }}>↩ Вернуть в работу</button>
@@ -620,7 +717,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                     <button onClick={() => finishTask(t)} style={{
                       border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '13px 18px', fontWeight: 800, fontSize: 14,
                     }}>✓ Завершить</button>
-                  )}
+                  ))}
                   <button onClick={() => repeatTask(t)} style={{
                     border: 'none', background: UI.soft, borderRadius: 999, padding: '13px 18px', fontWeight: 700, fontSize: 14,
                   }}>🔁 Повторить</button>

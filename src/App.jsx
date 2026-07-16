@@ -406,7 +406,7 @@ export default function App() {
       const log0 = { who: currentUser.name, action: payload._firstAction || 'приняла', time: logTimeNow() };
       if (DEMO) {
         let created;
-        setTasks(prev => { created = { id: nextId(prev), done: false, created_at: db.today, log: [log0], parts: [], ...payload }; return [...prev, created]; });
+        setTasks(prev => { created = { id: nextId(prev), done: false, stage: 'Новая', created_at: db.today, log: [log0], parts: [], ...payload }; return [...prev, created]; });
         return created;
       }
       try {

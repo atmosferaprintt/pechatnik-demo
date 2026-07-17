@@ -28,7 +28,7 @@ function deadlineStatus(t) {
   return 'ok';
 }
 
-export default function Tasks({ tasks, clients, contractors, transactions, categories, currentUser, isOwner, db, PEOPLE_COLUMNS, STAGES, UI, showToast, onPayTask }) {
+export default function Tasks({ tasks, clients, contractors, transactions, categories, currentUser, isOwner, isOwnerAccount, db, PEOPLE_COLUMNS, STAGES, UI, showToast, onPayTask }) {
   const [openTask, setOpenTask] = useState(null);
   const [view, setView] = useState('board'); // board | debts | done
   // Форма новой задачи (и правки существующей — editTask)
@@ -550,7 +550,9 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                   {canEdit(t) && (
                     <button onClick={() => openEdit(t)} title="Редактировать задачу" style={{ border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 13 }}><I n="pencil" size={13} /></button>
                   )}
-                  {isOwner && (
+                  {/* Удаление — по АККАУНТУ владельца: у Кристи кнопка есть и в режиме «сотрудник»
+                      (жалоба 2026-07-17 «задачу не удалить» — она работала в режиме сотрудника) */}
+                  {isOwnerAccount && (
                     <button onClick={() => { db.removeTask(t); setOpenTask(null); showToast(`«${t.title}» удалена`); }} title="Удалить задачу насовсем" style={{
                       border: 'none', background: 'rgba(192,57,43,.1)', color: '#c0392b', borderRadius: 999, padding: '0 13px', height: 32, fontSize: 12, fontWeight: 700,
                     }}>удалить</button>

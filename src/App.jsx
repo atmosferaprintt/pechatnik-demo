@@ -248,6 +248,9 @@ export default function App() {
   // Кнопки «мелочь одним тапом» — настраивает Кристи в Настройках (app_settings.quick_ops)
   const [quickOps, setQuickOps] = useState(DEMO ? DEMO_QUICK_OPS : []);
   const [transactions, setTransactions] = useState(DEMO ? DEMO_TRANSACTIONS : []);
+  // Журнал изменений кассы (transaction_log целиком): правки и удаления операций, кто и когда.
+  // Записи удалений живут с transaction_id = null — сама операция уже стёрта (триггер БД, миграция 010).
+  const [txLogs, setTxLogs] = useState([]);
   const [loading, setLoading] = useState(!DEMO);
 
   const isOwnerAccount = (currentUser?.role || 'employee') === 'owner';
@@ -294,7 +297,7 @@ export default function App() {
         loadAllRows('manual_debts'), loadAllRows('manual_debt_entries'),
         loadAllRows('supply_items'), loadAllRows('day_closures'), loadAllRows('transactions'),
       ]);
-      const txLogs = await loadAllRows('transaction_log');
+      const txLog = await loadAllRows('transaction_log');
       const { data: qo } = await supabase.from('app_settings').select('value').eq('key', 'quick_ops').maybeSingle();
       setQuickOps(Array.isArray(qo?.value) ? qo.value : []);
 
@@ -323,11 +326,12 @@ export default function App() {
         entries: mdE.filter(e => e.debt_id === d.id).map(e => ({ date: e.entry_date, what: e.what, amount: +e.amount })),
       })));
       setSupply(sup.map(s => ({ id: s.id, text: s.text, bought: s.bought, author: nameOf(s.created_by), date: dOnly(s.created_at) })));
-      setDayClosures(dc.map(c => ({ date: c.close_date, cash_fact: +c.cash_fact, cash_calc: +c.cash_calc, diff: +c.diff, closed_by: nameOf(c.closed_by) })));
+      setDayClosures(dc.map(c => ({ date: c.close_date, cash_fact: +c.cash_fact, cash_taken: +c.cash_taken || 0, cash_calc: +c.cash_calc, diff: +c.diff, closed_by: nameOf(c.closed_by) })));
       setTransactions(tx.map(t => ({
         ...t, amount: +t.amount, created_by_id: t.created_by, created_by: nameOf(t.created_by), time: hhmm(t.created_at),
-        log: txLogs.filter(l => l.transaction_id === t.id).map(l => ({ who: l.who, action: l.action, time: logT(l.created_at) })),
+        log: txLog.filter(l => l.transaction_id === t.id).map(l => ({ who: l.who, action: l.action, time: logT(l.created_at) })),
       })));
+      setTxLogs(txLog.map(l => ({ ...l, time: logT(l.created_at) })));
     } catch (e) {
       console.error(e);
       showToast('Ошибка загрузки данных: ' + (e.message || e), 'error');
@@ -407,12 +411,12 @@ export default function App() {
       return db.updateTransaction(t, { op_date: db.yesterday, moved_from: null });
     },
 
-    async closeShift({ date, cash_calc, cash_fact, diff }) {
+    async closeShift({ date, cash_calc, cash_fact, cash_taken, diff }) {
       if (!DEMO) {
-        const { error } = await supabase.from('day_closures').insert({ close_date: date, cash_calc, cash_fact, diff, closed_by: currentUser.id });
+        const { error } = await supabase.from('day_closures').insert({ close_date: date, cash_calc, cash_fact, cash_taken, diff, closed_by: currentUser.id });
         if (error) return fail(error);
       }
-      setDayClosures(prev => [...prev, { date, cash_calc, cash_fact, diff, closed_by: currentUser.name }]);
+      setDayClosures(prev => [...prev, { date, cash_calc, cash_fact, cash_taken, diff, closed_by: currentUser.name }]);
       return true;
     },
 
@@ -530,6 +534,7 @@ export default function App() {
         await supabase.from('transaction_log').insert({ transaction_id: t.id, who: logEntry.who, action: logEntry.action });
       }
       setTransactions(prev => prev.map(x => x.id === t.id ? { ...x, ...patch, log: [...(x.log || []), logEntry] } : x));
+      setTxLogs(prev => [...prev, { id: nextId(prev), transaction_id: t.id, who: logEntry.who, action: logEntry.action, time: logEntry.time, created_at: new Date().toISOString() }]);
       return true;
     },
 
@@ -538,6 +543,14 @@ export default function App() {
         const { error } = await supabase.from('transactions').delete().eq('id', t.id);
         if (error) return fail(error);
       }
+      // Снимок удалённой операции в журнал. В проде то же самое пишет триггер БД (миграция 010) —
+      // это локальное эхо, чтобы журнал обновился сразу; realtime-перезагрузка заменит его версией из базы.
+      const catN = t.category_id ? (categories.find(c => c.id === t.category_id)?.name || '—') : 'Оплата с депозита';
+      const mL = PAYMENT_METHODS.find(m => m.key === t.payment_method)?.label || t.payment_method;
+      const bankN = t.bank_id ? banks.find(b => b.id === t.bank_id)?.name : null;
+      const dd = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
+      const action = `удалила: ${t.type === 'income' ? 'приход' : 'расход'} ${t.amount} ₽ · ${catN} · ${mL}${bankN ? ` (${bankN})` : ''} · за ${dd(t.op_date)} · внесла ${t.created_by}${t.comment ? ` · «${t.comment}»` : ''}`;
+      setTxLogs(prev => [...prev, { id: nextId(prev), transaction_id: null, who: currentUser.name, action, time: logTimeNow(), created_at: new Date().toISOString() }]);
       setTransactions(prev => prev.filter(x => x.id !== t.id));
       return true;
     },
@@ -766,7 +779,7 @@ export default function App() {
   const visibleTabs = TABS.filter(t => t.roles.includes(userRole));
   const sectionProps = {
     supabase, currentUser, userRole, isOwner, isOwnerAccount, showToast, onUpdate: loadAll, loadAllRows, db,
-    clients, tasks, categories, banks, transactions, contractors, contractorTasks, deposits,
+    clients, tasks, categories, banks, transactions, txLogs, contractors, contractorTasks, deposits,
     manualDebts, supply, dayClosures, quickOps, CONTRACTOR_STAGES,
     PEOPLE_COLUMNS: peopleColumns, users, demoBankRows: DEMO ? DEMO_BANK_ROWS : [],
     loading, UI, STAGES, PAYMENT_METHODS, DEMO, isMobile,

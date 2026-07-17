@@ -183,10 +183,23 @@ function EntryForm({ categories, banks, tasks, clients, transactions, db, PAYMEN
             const paid = paidOf(t.id);
             const debt = (t.amount || 0) - paid;
             const over = total > 0 && total > debt;
+            // Разбивка оплаты по составу заказа: статьи из parts, категория подбирается по имени части
+            const splitByParts = () => {
+              const byName = (n) => categories.find(c => c.kind === 'income' && c.name.trim().toLowerCase() === n.trim().toLowerCase())?.id;
+              setRows(t.parts.map(p => ({ cat: byName(p.name) ? String(byName(p.name)) : '', sum: String(p.amount) })));
+            };
             return (
-              <div style={{ color: over ? '#8a5a00' : UI.muted, fontSize: 12, padding: '0 6px' }}>
-                Заказ {fmt(t.amount)} ₽ · оплачено {fmt(paid)} ₽ · {debt > 0 ? `долг ${fmt(debt)} ₽` : debt < 0 ? `переплата ${fmt(-debt)} ₽` : 'в расчёте ✓'}
-                {over ? ` — вносишь ${fmt(total)} ₽, по задаче будет переплата ${fmt(total - Math.max(debt, 0))} ₽` : ''}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ color: over ? '#8a5a00' : UI.muted, fontSize: 12, padding: '0 6px' }}>
+                  Заказ {fmt(t.amount)} ₽ · оплачено {fmt(paid)} ₽ · {debt > 0 ? `долг ${fmt(debt)} ₽` : debt < 0 ? `переплата ${fmt(-debt)} ₽` : 'в расчёте ✓'}
+                  {over ? ` — вносишь ${fmt(total)} ₽, по задаче будет переплата ${fmt(total - Math.max(debt, 0))} ₽` : ''}
+                </div>
+                {t.parts?.length > 0 && (
+                  <button onClick={splitByParts} style={{
+                    border: `1.5px dashed ${UI.muted}`, background: 'transparent', borderRadius: 999,
+                    padding: '8px 14px', fontSize: 12.5, color: UI.muted, fontWeight: 600, alignSelf: 'flex-start',
+                  }}>разбить по составу: {t.parts.map(p => `${p.name} ${fmt(p.amount)} ₽`).join(' + ')}</button>
+                )}
               </div>
             );
           })()}

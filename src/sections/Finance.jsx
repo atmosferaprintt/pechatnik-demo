@@ -319,34 +319,37 @@ function EmployeeView(props) {
                 <span style={{ background: UI.soft, borderRadius: 999, padding: '2px 9px', fontSize: 11.5 }}>{mLabel(t.payment_method)}{t.bank_id ? ` · ${bankName(t.bank_id)}` : ''}</span>
                 {t.moved_from && <span style={{ background: 'rgba(247,214,74,.4)', borderRadius: 999, padding: '2px 9px', fontSize: 11.5, fontWeight: 700 }}>↪ со вчера</span>}
                 <span style={{ color: UI.muted, fontSize: 12.5 }}>{t.comment}</span>
-                <span style={{ marginLeft: 'auto', fontWeight: 700, color: t.type === 'expense' ? '#c0392b' : UI.dark }}>
-                  {t.type === 'income' ? '+' : '−'}{fmt(t.amount)} ₽
-                </span>
-                <span title={t.created_by} style={{
-                  width: 24, height: 24, borderRadius: '50%', background: t.created_by === currentUser.name ? UI.accent : UI.dark,
-                  color: t.created_by === currentUser.name ? UI.dark : '#fff',
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0,
-                }}>{t.created_by[0]}</span>
-                {!isToday && (t.created_by === currentUser.name || isOwnerAccount) && (
-                  <button onClick={() => moveToToday(t)} title="Перенести на сегодня" style={{
-                    border: 'none', background: UI.soft, borderRadius: 999, padding: '5px 12px', fontSize: 12, fontWeight: 700,
-                  }}>↪ на сегодня</button>
-                )}
-                {isToday && (t.created_by === currentUser.name || isOwnerAccount) && (
-                  <>
-                    <button onClick={() => { db.moveTxToYesterday(t); showToast('Перенесена во вчера ↩'); }} title="Эта оплата была вчера — перенести" style={{
-                      border: 'none', background: UI.soft, borderRadius: 999, padding: '5px 12px', fontSize: 12, fontWeight: 700,
-                    }}>↩ во вчера</button>
-                    <button onClick={() => { db.removeTransaction(t); showToast('Запись удалена — внеси заново, если нужно'); }} title="Удалить (ошиблась)" style={{
-                      border: 'none', background: UI.soft, borderRadius: 999, padding: '5px 10px', fontSize: 12, color: UI.muted, cursor: 'pointer',
-                    }}>✕</button>
-                  </>
-                )}
-                {t.log?.length > 0 && (
-                  <span title={t.log.map(l => `${l.who}: ${l.action} (${l.time})`).join('\n')} style={{ color: UI.muted, display: 'inline-flex' }}>
-                    <I n="clock" size={12} />
+                {/* Хвост строки: кнопки ДО цифр, сумма и аватар фиксированной ширины — цифры выровнены */}
+                <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                  {t.log?.length > 0 && (
+                    <span title={t.log.map(l => `${l.who}: ${l.action} (${l.time})`).join('\n')} style={{ color: UI.muted, display: 'inline-flex' }}>
+                      <I n="clock" size={12} />
+                    </span>
+                  )}
+                  {!isToday && (t.created_by === currentUser.name || isOwnerAccount) && (
+                    <button onClick={() => moveToToday(t)} title="Перенести на сегодня" style={{
+                      border: 'none', background: UI.soft, borderRadius: 999, width: 26, height: 26, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                    }}>↪</button>
+                  )}
+                  {isToday && (t.created_by === currentUser.name || isOwnerAccount) && (
+                    <>
+                      <button onClick={() => { db.moveTxToYesterday(t); showToast('Перенесена во вчера ↩'); }} title="Эта оплата была вчера — перенести во вчера" style={{
+                        border: 'none', background: UI.soft, borderRadius: 999, width: 26, height: 26, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                      }}>↩</button>
+                      <button onClick={() => { db.removeTransaction(t); showToast('Запись удалена — внеси заново, если нужно'); }} title="Удалить (ошиблась)" style={{
+                        border: 'none', background: UI.soft, borderRadius: 999, width: 26, height: 26, fontSize: 12, color: UI.muted, cursor: 'pointer',
+                      }}>✕</button>
+                    </>
+                  )}
+                  <span style={{ minWidth: 86, textAlign: 'right', fontWeight: 700, color: t.type === 'expense' ? '#c0392b' : UI.dark }}>
+                    {t.type === 'income' ? '+' : '−'}{fmt(t.amount)} ₽
                   </span>
-                )}
+                  <span title={t.created_by} style={{
+                    width: 24, height: 24, borderRadius: '50%', background: t.created_by === currentUser.name ? UI.accent : UI.dark,
+                    color: t.created_by === currentUser.name ? UI.dark : '#fff',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0,
+                  }}>{t.created_by[0]}</span>
+                </span>
               </div>
             ))}
             {!dayTx.length && <div style={{ color: UI.muted, fontSize: 14 }}>Записей нет</div>}

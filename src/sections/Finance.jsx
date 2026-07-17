@@ -219,7 +219,10 @@ function EmployeeView(props) {
   const dayTx = transactions.filter(t => t.op_date === opDate
     && catKind(t) !== 'expense_personal'
     && !(t.type === 'expense' && catKind(t) === 'expense_work'));
-  const cashCalc = dayTx.reduce((s, t) => s + (t.payment_method === 'cash' ? (t.type === 'income' ? t.amount : -t.amount) : 0), 0);
+  // Переходящий остаток: сколько лежало в кассе на утро (фактический остаток последнего закрытия)
+  const carry = dayClosures.filter(c => c.date < opDate).sort((a, b) => (a.date < b.date ? 1 : -1))[0]?.cash_fact || 0;
+  const dayCashFlow = dayTx.reduce((s, t) => s + (t.payment_method === 'cash' ? (t.type === 'income' ? t.amount : -t.amount) : 0), 0);
+  const cashCalc = carry + dayCashFlow;
   const closure = dayClosures.find(c => c.date === opDate);
 
   const quickSave = (q) => {
@@ -342,8 +345,16 @@ function EmployeeView(props) {
           {/* Закрытие смены */}
           <div style={{ background: UI.dark, color: '#fff', borderRadius: 26, padding: 24 }}>
             <div style={{ fontWeight: 800, marginBottom: 10 }}>Закрытие смены · {opDate.slice(8, 10)}.{opDate.slice(5, 7)}</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '6px 0' }}>
+              <span style={{ opacity: .75 }}>В кассе на утро (прошлое закрытие)</span>
+              <span style={{ fontWeight: 800 }}>{fmt(carry)} ₽</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '6px 0' }}>
+              <span style={{ opacity: .75 }}>Наличными за день</span>
+              <span style={{ fontWeight: 800 }}>{dayCashFlow >= 0 ? '+' : ''}{fmt(dayCashFlow)} ₽</span>
+            </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,.14)' }}>
-              <span style={{ opacity: .75 }}>Наличных за день (расчётно)</span>
+              <span style={{ opacity: .75 }}>Должно быть в кассе</span>
               <span style={{ fontWeight: 800 }}>{fmt(cashCalc)} ₽</span>
             </div>
             {closure ? (
@@ -432,7 +443,8 @@ function OwnerView(props) {
   // Оплаты «Депозитом» в доходы дня не входят — деньги пришли раньше, при внесении депозита
   const income = dailyTx.filter(t => t.type === 'income' && t.payment_method !== 'deposit').reduce((s, t) => s + t.amount, 0);
   const expense = dailyTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-  // Касса дня: наличные приходы минус наличная операционка (крупные и личные кассу дня не трогают)
+  // Касса дня: переходящий остаток (прошлое закрытие) + наличные приходы − наличная операционка
+  const carry = dayClosures.filter(c => c.date < opDate).sort((a, b) => (a.date < b.date ? 1 : -1))[0]?.cash_fact || 0;
   const cashIn = dailyTx.filter(t => t.type === 'income' && t.payment_method === 'cash').reduce((s, t) => s + t.amount, 0);
   const cashOut = dailyTx.filter(t => t.type === 'expense' && t.payment_method === 'cash').reduce((s, t) => s + t.amount, 0);
 
@@ -480,7 +492,7 @@ function OwnerView(props) {
       <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
         <BigStat label="Доходы за день" value={`${fmt(income)} ₽`} UI={UI} />
         <BigStat label="Расходы за день" value={`${fmt(expense)} ₽`} UI={UI} />
-        <BigStat label="Наличных в кассе (расчётно)" value={`${fmt(cashIn - cashOut)} ₽`} UI={UI} />
+        <BigStat label={`Наличных в кассе (утро ${fmt(carry)} ₽ + день)`} value={`${fmt(carry + cashIn - cashOut)} ₽`} UI={UI} />
       </div>
 
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>

@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 
 const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
 
-export default function Analytics({ UI, transactions, categories, db, showToast }) {
+export default function Analytics({ UI, transactions, categories, dayClosures, db, showToast }) {
   const fmt = (n) => Math.round(n).toLocaleString('ru-RU');
   const [month, setMonth] = useState(db.today.slice(0, 7)); // 'YYYY-MM'
 
@@ -14,7 +14,10 @@ export default function Analytics({ UI, transactions, categories, db, showToast 
 
   // Доходы — без оплат «Депозитом» (деньги пришли при внесении депозита)
   const incomeTx = monthTx.filter(t => t.type === 'income' && t.payment_method !== 'deposit');
-  const income = incomeTx.reduce((s, t) => s + t.amount, 0);
+  const opIncome = incomeTx.reduce((s, t) => s + t.amount, 0);
+  // Разницы смен (решение Кристи 2026-07-17): плюс — в выручку, минус — из выручки
+  const diffSum = dayClosures.filter(c => c.date?.startsWith(month)).reduce((s, c) => s + (c.diff || 0), 0);
+  const income = opIncome + diffSum;
   const personalTotal = monthTx.filter(t => t.type === 'expense' && kindOf(t) === 'expense_personal').reduce((s, t) => s + t.amount, 0);
   const expense = monthTx.filter(t => t.type === 'expense' && kindOf(t) !== 'expense_personal').reduce((s, t) => s + t.amount, 0);
   const profit = income - expense;
@@ -97,7 +100,7 @@ export default function Analytics({ UI, transactions, categories, db, showToast 
 
       {/* Крупные цифры. Личные — отдельно, в расходы бизнеса и прибыль не входят (как в Excel Кристи) */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
-        <Big label="Выручка" value={`${fmt(income)} ₽`} UI={UI} />
+        <Big label={diffSum !== 0 ? `Выручка (операции ${fmt(opIncome)} ₽ · разницы смен ${diffSum > 0 ? '+' : ''}${fmt(diffSum)} ₽)` : 'Выручка'} value={`${fmt(income)} ₽`} UI={UI} />
         <Big label="Расходы бизнеса" value={`${fmt(expense)} ₽`} UI={UI} />
         <Big label="Чистая прибыль" value={`${fmt(profit)} ₽`} UI={UI} dark />
         <Big label="Личные (вне бизнеса)" value={`${fmt(personalTotal)} ₽`} UI={UI} accentBorder />

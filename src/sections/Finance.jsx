@@ -183,10 +183,16 @@ function EntryForm({ categories, banks, tasks, clients, transactions, db, PAYMEN
             const paid = paidOf(t.id);
             const debt = (t.amount || 0) - paid;
             const over = total > 0 && total > debt;
-            // Разбивка оплаты по составу заказа: статьи из parts, категория подбирается по имени части
+            // Разбивка оплаты по составу заказа: статьи из parts, категория подбирается по имени части.
+            // Части часто называются не как категории («Печать», «Дизайн») — тогда подставляем
+            // категорию, выбранную до разбивки, а если её нет — сразу подсказываем, что выбрать руками
+            // (раньше молча оставляли пустыми, и «Записать» падал с ошибкой — жалоба Кристи 2026-07-17).
             const splitByParts = () => {
               const byName = (n) => categories.find(c => c.kind === 'income' && c.name.trim().toLowerCase() === n.trim().toLowerCase())?.id;
-              setRows(t.parts.map(p => ({ cat: byName(p.name) ? String(byName(p.name)) : '', sum: String(p.amount) })));
+              const fallback = rows.find(r => r.cat)?.cat || '';
+              const next = t.parts.map(p => { const id = byName(p.name); return { cat: id ? String(id) : fallback, sum: String(p.amount) }; });
+              setRows(next);
+              if (next.some(r => !r.cat)) showToast('Суммы расставила — теперь выбери категорию у каждой статьи');
             };
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -242,6 +248,7 @@ function EmployeeView(props) {
   const YESTERDAY_D = db.yesterday;
   const [opDate, setOpDate] = useState(TODAY_D);
   const [cashFact, setCashFact] = useState('');
+  const [cashTaken, setCashTaken] = useState(''); // сдано: Кристи забирает крупную наличку при закрытии
   const [mFlt, setMFlt] = useState(''); // фильтр по способу оплаты
   const isToday = opDate === TODAY_D;
 
@@ -250,13 +257,17 @@ function EmployeeView(props) {
   const mLabel = (k) => PAYMENT_METHODS.find(m => m.key === k)?.label || k;
   const bankName = (id) => banks.find(b => b.id === id)?.name;
 
-  // Девочкам видна операционка дня (без личных и крупных расходов Кристи)
+  // Операционка дня (без личных и крупных расходов Кристи) — по ней считается касса при закрытии
   const dayTx = transactions.filter(t => t.op_date === opDate
     && catKind(t) !== 'expense_personal'
     && !(t.type === 'expense' && catKind(t) === 'expense_work'))
     .sort((a, b) => (b.time || '').localeCompare(a.time || '') || b.id - a.id); // новые сверху
-  // Переходящий остаток: сколько лежало в кассе на утро (фактический остаток последнего закрытия)
-  const carry = dayClosures.filter(c => c.date < opDate).sort((a, b) => (a.date < b.date ? 1 : -1))[0]?.cash_fact || 0;
+  // В ленте сотрудница видит ТОЛЬКО свои записи (решение Кристи 2026-07-17), сводка дня — у владельца.
+  // Касса ниже считается по всем операциям дня — иначе смену не свести.
+  const feedTx = isOwnerAccount ? dayTx : dayTx.filter(t => t.created_by === currentUser.name);
+  // Переходящий остаток: что осталось в кассе после прошлого закрытия (факт минус сданное Кристи)
+  const lastClosure = dayClosures.filter(c => c.date < opDate).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+  const carry = lastClosure ? lastClosure.cash_fact - (lastClosure.cash_taken || 0) : 0;
   const dayCashFlow = dayTx.reduce((s, t) => s + (t.payment_method === 'cash' ? (t.type === 'income' ? t.amount : -t.amount) : 0), 0);
   const cashCalc = carry + dayCashFlow;
   const closure = dayClosures.find(c => c.date === opDate);
@@ -276,9 +287,11 @@ function EmployeeView(props) {
 
   const closeShift = () => {
     if (cashFact === '') { showToast('Введи фактический остаток в кассе', 'error'); return; }
+    const taken = +cashTaken || 0;
+    if (taken > +cashFact) { showToast('Сдано больше, чем есть в кассе — проверь цифры', 'error'); return; }
     const diff = +cashFact - cashCalc;
-    db.closeShift({ date: opDate, cash_calc: cashCalc, cash_fact: +cashFact, diff });
-    setCashFact('');
+    db.closeShift({ date: opDate, cash_calc: cashCalc, cash_fact: +cashFact, cash_taken: taken, diff });
+    setCashFact(''); setCashTaken('');
     showToast(diff === 0 ? 'Смена закрыта, касса сошлась ✓' : `Смена закрыта, разница ${diff > 0 ? '+' : ''}${fmt(diff)} ₽`, diff === 0 ? 'ok' : 'error');
   };
 
@@ -324,21 +337,23 @@ function EmployeeView(props) {
         </div>
 
         <div style={{ flex: 1, minWidth: 320, display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* Операции дня — видно всем, чтобы можно было закрыть смену */}
+          {/* Лента: сотрудница видит только свои записи, владельческий аккаунт — все */}
           <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 26 }}>
-            <div style={{ fontWeight: 800, marginBottom: 4 }}>Операции за {isToday ? 'сегодня' : 'вчера'} · {dayTx.length}</div>
+            <div style={{ fontWeight: 800, marginBottom: 4 }}>{isOwnerAccount ? 'Операции' : 'Мои записи'} за {isToday ? 'сегодня' : 'вчера'} · {feedTx.length}</div>
             <div style={{ color: UI.muted, fontSize: 13, marginBottom: 10 }}>
-              {isToday ? 'Всё, что записано за день — по этому закрывается смена' : 'Вчерашний день: оплату можно перекинуть на сегодня ↪'}
+              {isToday
+                ? (isOwnerAccount ? 'Всё, что записано за день — по этому закрывается смена' : 'Твои записи за день. Смена закрывается по всем операциям дня')
+                : 'Вчерашний день: оплату можно перекинуть на сегодня ↪'}
             </div>
-            {/* Фильтр по способам оплаты — кнопки строятся из того, что есть в дне */}
-            {dayTx.length > 0 && (
+            {/* Фильтр по способам оплаты — кнопки строятся из того, что есть в ленте */}
+            {feedTx.length > 0 && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
                 <button onClick={() => setMFlt('')} style={{
                   border: 'none', borderRadius: 999, padding: '6px 13px', fontSize: 12, fontWeight: 700,
                   background: mFlt === '' ? UI.dark : UI.soft, color: mFlt === '' ? '#fff' : UI.dark,
                 }}>Все</button>
-                {PAYMENT_METHODS.filter(m => m.key !== 'deposit' && dayTx.some(t => t.payment_method === m.key)).map(m => {
-                  const sum = dayTx.filter(t => t.payment_method === m.key && t.type === 'income').reduce((s, t) => s + t.amount, 0);
+                {PAYMENT_METHODS.filter(m => m.key !== 'deposit' && feedTx.some(t => t.payment_method === m.key)).map(m => {
+                  const sum = feedTx.filter(t => t.payment_method === m.key && t.type === 'income').reduce((s, t) => s + t.amount, 0);
                   return (
                     <button key={m.key} onClick={() => setMFlt(v => v === m.key ? '' : m.key)} style={{
                       border: 'none', borderRadius: 999, padding: '6px 13px', fontSize: 12, fontWeight: 700,
@@ -348,7 +363,7 @@ function EmployeeView(props) {
                 })}
               </div>
             )}
-            {dayTx.filter(t => !mFlt || t.payment_method === mFlt).map(t => (
+            {feedTx.filter(t => !mFlt || t.payment_method === mFlt).map(t => (
               <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
                 <I n={t.type === 'income' ? 'income' : 'expense'} size={14} style={{ color: t.type === 'income' ? '#8a8a85' : '#c0392b' }} />
                 <span style={{ fontWeight: 600 }}>{t.category_id ? catName(t.category_id) : 'Оплата с депозита'}</span>
@@ -388,7 +403,7 @@ function EmployeeView(props) {
                 </span>
               </div>
             ))}
-            {!dayTx.length && <div style={{ color: UI.muted, fontSize: 14 }}>Записей нет</div>}
+            {!feedTx.length && <div style={{ color: UI.muted, fontSize: 14 }}>Записей нет</div>}
           </div>
 
           {/* Закрытие смены */}
@@ -409,24 +424,45 @@ function EmployeeView(props) {
             {closure ? (
               <div style={{ marginTop: 14 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '4px 0' }}>
-                  <span style={{ opacity: .75 }}>Остаток по факту</span><span style={{ fontWeight: 800 }}>{fmt(closure.cash_fact)} ₽</span>
+                  <span style={{ opacity: .75 }}>Пересчитано по факту</span><span style={{ fontWeight: 800 }}>{fmt(closure.cash_fact)} ₽</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '4px 0' }}>
                   <span style={{ opacity: .75 }}>Разница</span>
                   <span style={{ fontWeight: 800, color: closure.diff === 0 ? '#f7d64a' : '#ff8a80' }}>{closure.diff > 0 ? '+' : ''}{fmt(closure.diff)} ₽</span>
+                </div>
+                {(closure.cash_taken || 0) > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '4px 0' }}>
+                    <span style={{ opacity: .75 }}>Сдано (забрали из кассы)</span><span style={{ fontWeight: 800 }}>−{fmt(closure.cash_taken)} ₽</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '4px 0' }}>
+                  <span style={{ opacity: .75 }}>Осталось в кассе на утро</span>
+                  <span style={{ fontWeight: 800, color: '#f7d64a' }}>{fmt(closure.cash_fact - (closure.cash_taken || 0))} ₽</span>
                 </div>
                 <div style={{ marginTop: 10, background: 'rgba(247,214,74,.2)', border: '1px solid #f7d64a', borderRadius: 14, padding: '10px 14px', fontSize: 13.5, fontWeight: 700 }}>
                   ✓ Смена закрыта · {closure.closed_by}
                 </div>
               </div>
             ) : (
-              <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-                <input type="number" value={cashFact} onChange={e => setCashFact(e.target.value)} placeholder="Остаток в кассе, ₽" style={{
-                  flex: 1, border: 'none', borderRadius: 999, padding: '12px 18px', fontSize: 14, outline: 'none',
-                  background: 'rgba(255,255,255,.12)', color: '#fff', minWidth: 0,
-                }} />
+              <div style={{ marginTop: 14 }}>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <input type="number" value={cashFact} onChange={e => setCashFact(e.target.value)} placeholder="В кассе по факту, ₽" style={{
+                    flex: 1, border: 'none', borderRadius: 999, padding: '12px 18px', fontSize: 14, outline: 'none',
+                    background: 'rgba(255,255,255,.12)', color: '#fff', minWidth: 0,
+                  }} />
+                  <input type="number" value={cashTaken} onChange={e => setCashTaken(e.target.value)} placeholder="Сдано, ₽" title="Сколько налички забрали из кассы (Кристи)" style={{
+                    flex: 1, border: 'none', borderRadius: 999, padding: '12px 18px', fontSize: 14, outline: 'none',
+                    background: 'rgba(255,255,255,.12)', color: '#fff', minWidth: 0,
+                  }} />
+                </div>
+                {cashFact !== '' && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '8px 4px 0', opacity: .85 }}>
+                    <span>Останется в кассе на утро</span>
+                    <span style={{ fontWeight: 800 }}>{fmt(+cashFact - (+cashTaken || 0))} ₽</span>
+                  </div>
+                )}
                 <button onClick={closeShift} style={{
-                  border: 'none', background: UI.accent, color: UI.dark, borderRadius: 999, padding: '12px 20px', fontWeight: 800, fontSize: 14, flexShrink: 0,
+                  border: 'none', background: UI.accent, color: UI.dark, borderRadius: 999, padding: '12px 20px', fontWeight: 800, fontSize: 14, width: '100%', marginTop: 10,
                 }}>Закрыть смену</button>
               </div>
             )}
@@ -441,7 +477,7 @@ function EmployeeView(props) {
 const RU_DATE = (d) => `${+d.slice(8, 10)} ${['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'][+d.slice(5, 7) - 1]}`;
 
 function OwnerView(props) {
-  const { transactions, categories, banks, tasks, demoBankRows, dayClosures, db, UI, PAYMENT_METHODS, showToast } = props;
+  const { transactions, categories, banks, tasks, txLogs, demoBankRows, dayClosures, db, UI, PAYMENT_METHODS, showToast } = props;
   // Пришли из карточки задачи — форма операции сразу открыта (задача подставится в EntryForm)
   const [showAddOp, setShowAddOp] = useState(!!props.prefillTaskId);
   const [opDate, setOpDate] = useState(props.db.today); // история дней: смотрим любой день
@@ -457,6 +493,9 @@ function OwnerView(props) {
   const [eBank, setEBank] = useState('');
   const [eComment, setEComment] = useState('');
   const [historyTxId, setHistoryTxId] = useState(null); // раскрытая история записи
+  // Журнал изменений кассы: все правки и удаления операций — кто, когда, что (просьба Кристи 2026-07-17)
+  const [showJournal, setShowJournal] = useState(false);
+  const [journalWho, setJournalWho] = useState('');
 
   const openTxEdit = (t) => {
     setEditTx(t);
@@ -510,8 +549,9 @@ function OwnerView(props) {
   // Оплаты «Депозитом» в доходы дня не входят — деньги пришли раньше, при внесении депозита
   const income = dailyTx.filter(t => t.type === 'income' && t.payment_method !== 'deposit').reduce((s, t) => s + t.amount, 0);
   const expense = dailyTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-  // Касса дня: переходящий остаток (прошлое закрытие) + наличные приходы − наличная операционка
-  const carry = dayClosures.filter(c => c.date < opDate).sort((a, b) => (a.date < b.date ? 1 : -1))[0]?.cash_fact || 0;
+  // Касса дня: переходящий остаток (прошлое закрытие: факт − сдано) + наличные приходы − наличная операционка
+  const lastClosure = dayClosures.filter(c => c.date < opDate).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+  const carry = lastClosure ? lastClosure.cash_fact - (lastClosure.cash_taken || 0) : 0;
   const cashIn = dailyTx.filter(t => t.type === 'income' && t.payment_method === 'cash').reduce((s, t) => s + t.amount, 0);
   const cashOut = dailyTx.filter(t => t.type === 'expense' && t.payment_method === 'cash').reduce((s, t) => s + t.amount, 0);
 
@@ -551,10 +591,71 @@ function OwnerView(props) {
             border: 'none', background: UI.soft, borderRadius: 999, padding: '7px 12px', fontSize: 13, outline: 'none', fontFamily: 'inherit',
           }} />
         </div>
+        <button onClick={() => setShowJournal(true)} title="Кто что менял и удалял в кассе" style={{
+          border: 'none', background: '#fff', borderRadius: 999, padding: '10px 16px', fontWeight: 700, fontSize: 13, boxShadow: UI.shadow, marginLeft: 'auto',
+        }}><I n="clock" size={13} /> Журнал</button>
         <button onClick={() => setShowAddOp(true)} style={{
-          border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '10px 20px', fontWeight: 700, fontSize: 14, marginLeft: 'auto',
+          border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '10px 20px', fontWeight: 700, fontSize: 14,
         }}>+ Операция</button>
       </div>
+
+      {/* Журнал изменений: правки пишет клиент, удаления — триггер в БД, стереть след нельзя */}
+      {showJournal && (() => {
+        const whos = [...new Set(txLogs.map(l => l.who))];
+        const journal = txLogs
+          .filter(l => !journalWho || l.who === journalWho)
+          .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+        return (
+          <div onClick={() => setShowJournal(false)} style={{
+            position: 'fixed', inset: 0, background: 'rgba(29,29,31,.45)', display: 'flex',
+            alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20,
+          }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 26, padding: 26, width: 'min(680px, 100%)', maxHeight: '88vh', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <span style={{ fontWeight: 800, fontSize: 17 }}><I n="clock" size={15} /> Журнал изменений кассы</span>
+                <button onClick={() => setShowJournal(false)} style={{ marginLeft: 'auto', border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 15 }}>✕</button>
+              </div>
+              <div style={{ color: UI.muted, fontSize: 12.5 }}>
+                Каждая правка и удаление операции: кто, когда и что именно. Пишется автоматически, подчистить журнал нельзя.
+              </div>
+              {whos.length > 1 && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <button onClick={() => setJournalWho('')} style={{
+                    border: 'none', borderRadius: 999, padding: '7px 14px', fontSize: 12.5, fontWeight: 700,
+                    background: journalWho === '' ? UI.dark : UI.soft, color: journalWho === '' ? '#fff' : UI.dark,
+                  }}>Все</button>
+                  {whos.map(w => (
+                    <button key={w} onClick={() => setJournalWho(v => v === w ? '' : w)} style={{
+                      border: 'none', borderRadius: 999, padding: '7px 14px', fontSize: 12.5, fontWeight: 700,
+                      background: journalWho === w ? UI.dark : UI.soft, color: journalWho === w ? '#fff' : UI.dark,
+                    }}>{w}</button>
+                  ))}
+                </div>
+              )}
+              <div style={{ overflowY: 'auto', minHeight: 120 }}>
+                {journal.map(l => {
+                  const isDel = l.action.startsWith('удалила:');
+                  return (
+                    <div key={l.id} style={{ display: 'flex', gap: 8, alignItems: 'baseline', padding: '9px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 13.5, flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 700, flexShrink: 0 }}>{l.who}</span>
+                      {isDel && (
+                        <span style={{ background: 'rgba(192,57,43,.12)', color: '#c0392b', borderRadius: 999, padding: '2px 9px', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>удалила</span>
+                      )}
+                      <span style={{ color: isDel ? '#c0392b' : UI.dark, minWidth: 0 }}>
+                        {isDel ? l.action.slice('удалила:'.length).trim() : l.action}
+                      </span>
+                      <span style={{ marginLeft: 'auto', color: UI.muted, fontSize: 12, flexShrink: 0 }}>{l.time}</span>
+                    </div>
+                  );
+                })}
+                {!journal.length && (
+                  <div style={{ color: UI.muted, fontSize: 13.5 }}>Пока пусто — здесь появятся правки и удаления операций</div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
         <BigStat label="Доходы за день" value={`${fmt(income)} ₽`} UI={UI} />
@@ -709,7 +810,9 @@ function OwnerView(props) {
         <div style={{ background: UI.dark, color: '#fff', borderRadius: 26, padding: 26, flex: 1, minWidth: 320 }}>
           {shiftClosure && (
             <div style={{ background: 'rgba(247,214,74,.2)', border: '1px solid #f7d64a', borderRadius: 14, padding: '10px 14px', fontSize: 13, fontWeight: 700, marginBottom: 14 }}>
-              ✓ Смена закрыта · {shiftClosure.closed_by} · остаток {fmt(shiftClosure.cash_fact)} ₽ · разница {shiftClosure.diff > 0 ? '+' : ''}{fmt(shiftClosure.diff)} ₽
+              ✓ Смена закрыта · {shiftClosure.closed_by} · факт {fmt(shiftClosure.cash_fact)} ₽
+              {(shiftClosure.cash_taken || 0) > 0 && <> · сдано {fmt(shiftClosure.cash_taken)} ₽ · осталось {fmt(shiftClosure.cash_fact - shiftClosure.cash_taken)} ₽</>}
+              {' '}· разница {shiftClosure.diff > 0 ? '+' : ''}{fmt(shiftClosure.diff)} ₽
             </div>
           )}
           <div style={{ fontWeight: 800, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>

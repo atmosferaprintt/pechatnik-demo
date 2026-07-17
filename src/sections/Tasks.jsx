@@ -664,16 +664,32 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
               </div>
 
               <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Оплаты по задаче</div>
-              {paid.length ? paid.map(p => (
-                <div key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
-                  <I n="income" size={14} style={{ color: '#8a8a85' }} />
-                  <span style={{ fontWeight: 600 }}>{catName(p.category_id)}</span>
-                  <span style={{ color: UI.muted, fontSize: 12.5 }}>{p.created_by} · {p.time}</span>
-                  <span style={{ marginLeft: 'auto', fontWeight: 700 }}>+{fmt(p.amount)}</span>
-                </div>
-              )) : (
-                <div style={{ color: UI.muted, fontSize: 13.5 }}>Оплат пока нет — записываются в Финансах с привязкой к задаче</div>
-              )}
+              {/* Сотрудница видит построчно только СВОИ оплаты (решение Кристи 2026-07-17);
+                  чужие — одной строкой без деталей, итог и долг остаются в графе «Оплата» */}
+              {(() => {
+                const visiblePaid = isOwnerAccount ? paid : paid.filter(p => p.created_by === currentUser.name);
+                const hiddenCnt = paid.length - visiblePaid.length;
+                return (
+                  <>
+                    {visiblePaid.map(p => (
+                      <div key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
+                        <I n="income" size={14} style={{ color: '#8a8a85' }} />
+                        <span style={{ fontWeight: 600 }}>{catName(p.category_id)}</span>
+                        <span style={{ color: UI.muted, fontSize: 12.5 }}>{p.created_by} · {p.time}</span>
+                        <span style={{ marginLeft: 'auto', fontWeight: 700 }}>+{fmt(p.amount)}</span>
+                      </div>
+                    ))}
+                    {hiddenCnt > 0 && (
+                      <div style={{ color: UI.muted, fontSize: 13, padding: '9px 2px' }}>
+                        + {hiddenCnt} оплат{hiddenCnt === 1 ? 'а' : ''} других сотрудниц — итог в графе «Оплата»
+                      </div>
+                    )}
+                    {!paid.length && (
+                      <div style={{ color: UI.muted, fontSize: 13.5 }}>Оплат пока нет — записываются в Финансах с привязкой к задаче</div>
+                    )}
+                  </>
+                );
+              })()}
               {/* Мини-счёт: заказ − оплачено = долг / переплата. Оплаты живут в Финансах и при правке задачи не трогаются */}
               {paid.length > 0 && (
                 <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', padding: '10px 2px 2px', fontSize: 13.5 }}>

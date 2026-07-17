@@ -243,13 +243,46 @@ function EntryForm({ categories, banks, tasks, clients, transactions, db, PAYMEN
 // Вид сотрудника (с 2026-07-16, просьба Кристи): доступ к сегодня + вчера,
 // закрытие смены и перенос вчерашних оплат на сегодня. Итоги по банку/месяцу — только у Кристи.
 function EmployeeView(props) {
-  const { transactions, categories, banks, currentUser, isOwnerAccount, dayClosures, db, quickOps, PAYMENT_METHODS, UI, showToast } = props;
+  const { transactions, categories, banks, tasks, currentUser, isOwnerAccount, dayClosures, db, quickOps, PAYMENT_METHODS, UI, showToast } = props;
   const TODAY_D = db.today;
   const YESTERDAY_D = db.yesterday;
   const [opDate, setOpDate] = useState(TODAY_D);
   const [cashFact, setCashFact] = useState('');
   const [cashTaken, setCashTaken] = useState(''); // сдано: Кристи забирает крупную наличку при закрытии
   const [mFlt, setMFlt] = useState(''); // фильтр по способу оплаты
+  // Правка СВОЕЙ записи (сегодня/вчера): категория, сумма, способ, задача, комментарий.
+  // Права в базе готовы с миграции 008 — UI дошёл 2026-07-17 (просьбы: «карта была, а я нал выбрала»,
+  // «записала оплату — можно ли подкрепить к задаче?»). Всё пишется в историю и журнал Кристи.
+  const [empEdit, setEmpEdit] = useState(null);
+  const [emCat, setEmCat] = useState('');
+  const [emSum, setEmSum] = useState('');
+  const [emMethod, setEmMethod] = useState('cash');
+  const [emBank, setEmBank] = useState('');
+  const [emTask, setEmTask] = useState('');
+  const [emComment, setEmComment] = useState('');
+
+  const openEmpEdit = (t) => {
+    setEmpEdit(t);
+    setEmCat(t.category_id ? String(t.category_id) : ''); setEmSum(String(t.amount));
+    setEmMethod(t.payment_method); setEmBank(t.bank_id ? String(t.bank_id) : '');
+    setEmTask(t.task_id ? String(t.task_id) : ''); setEmComment(t.comment || '');
+  };
+
+  const saveEmpEdit = async () => {
+    if (!+emSum) { showToast('Сумма должна быть больше нуля', 'error'); return; }
+    const patch = {
+      category_id: emCat ? +emCat : null, amount: +emSum,
+      payment_method: emMethod, bank_id: emMethod === 'transfer' ? +emBank || null : null,
+      comment: emComment.trim(), task_id: emTask ? +emTask : null,
+    };
+    if ((patch.task_id || null) !== (empEdit.task_id || null)) {
+      patch.client_id = patch.task_id ? tasks.find(x => x.id === patch.task_id)?.client_id || null : null;
+    }
+    const ok = await db.updateTransaction(empEdit, patch);
+    if (!ok) return;
+    setEmpEdit(null);
+    showToast('Исправлено ✓ (в историю записалось, что поменялось)');
+  };
   const isToday = opDate === TODAY_D;
 
   const catName = (id) => categories.find(c => c.id === id)?.name || '?';
@@ -377,6 +410,11 @@ function EmployeeView(props) {
                       <I n="clock" size={12} />
                     </span>
                   )}
+                  {(t.created_by === currentUser.name || isOwnerAccount) && t.payment_method !== 'deposit' && (
+                    <button onClick={() => openEmpEdit(t)} title="Исправить (способ оплаты, сумма, задача…)" style={{
+                      border: 'none', background: UI.soft, borderRadius: 999, width: 26, height: 26, fontSize: 11, cursor: 'pointer',
+                    }}><I n="pencil" size={11} /></button>
+                  )}
                   {!isToday && (t.created_by === currentUser.name || isOwnerAccount) && (
                     <button onClick={() => moveToToday(t)} title="Перенести на сегодня" style={{
                       border: 'none', background: UI.soft, borderRadius: 999, width: 26, height: 26, fontSize: 12, fontWeight: 700, cursor: 'pointer',
@@ -469,6 +507,67 @@ function EmployeeView(props) {
           </div>
         </div>
       </div>
+
+      {/* Мини-правка своей записи */}
+      {empEdit && (
+        <div onClick={() => setEmpEdit(null)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(29,29,31,.45)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20,
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 26, padding: 26, width: 'min(420px, 100%)', display: 'flex', flexDirection: 'column', gap: 11 }}>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <span style={{ fontWeight: 800, fontSize: 17 }}>Исправить запись</span>
+              <button onClick={() => setEmpEdit(null)} style={{ marginLeft: 'auto', border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 15 }}>✕</button>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <select value={emCat} onChange={e => setEmCat(e.target.value)} style={{
+                flex: 1.4, minWidth: 0, padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 14, outline: 'none',
+              }}>
+                <option value="">Категория…</option>
+                {categories.filter(c => empEdit.type === 'income' ? c.kind === 'income' : c.kind === 'expense_shared').map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <input type="number" value={emSum} onChange={e => setEmSum(e.target.value)} placeholder="Сумма" style={{
+                flex: 1, minWidth: 0, padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 15, fontWeight: 700, outline: 'none',
+              }} />
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {PAYMENT_METHODS.filter(m => m.key !== 'deposit').map(m => (
+                <button key={m.key} onClick={() => setEmMethod(m.key)} style={{
+                  border: 'none', borderRadius: 999, padding: '8px 14px', fontSize: 12.5, fontWeight: 600,
+                  background: emMethod === m.key ? UI.accent : UI.soft,
+                }}>{m.label}</button>
+              ))}
+            </div>
+            {emMethod === 'transfer' && (
+              <select value={emBank} onChange={e => setEmBank(e.target.value)} style={{
+                width: '100%', padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 14, outline: 'none',
+              }}>
+                <option value="">На какую карту (банк)…</option>
+                {banks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            )}
+            {/* «Записала оплату, но не расписала задачу» — привязка задним числом */}
+            {empEdit.type === 'income' && (
+              <select value={emTask} onChange={e => setEmTask(e.target.value)} style={{
+                width: '100%', padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 14, outline: 'none',
+              }}>
+                <option value="">Без задачи…</option>
+                {tasks.filter(x => !x.done || x.id === empEdit.task_id).map(x => (
+                  <option key={x.id} value={x.id}>{x.title}</option>
+                ))}
+              </select>
+            )}
+            <input value={emComment} onChange={e => setEmComment(e.target.value)} placeholder="Комментарий" style={{
+              width: '100%', padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 14, outline: 'none',
+            }} />
+            <button onClick={saveEmpEdit} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '14px 0', fontWeight: 800, fontSize: 14 }}>
+              Сохранить (в историю запишется, что изменилось)
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -491,6 +590,7 @@ function OwnerView(props) {
   const [eSum, setESum] = useState('');
   const [eMethod, setEMethod] = useState('cash');
   const [eBank, setEBank] = useState('');
+  const [eTask, setETask] = useState(''); // привязка оплаты к задаче — можно задним числом (просьба 2026-07-17)
   const [eComment, setEComment] = useState('');
   const [historyTxId, setHistoryTxId] = useState(null); // раскрытая история записи
   // Журнал изменений кассы: все правки и удаления операций — кто, когда, что (просьба Кристи 2026-07-17)
@@ -500,16 +600,22 @@ function OwnerView(props) {
   const openTxEdit = (t) => {
     setEditTx(t);
     setEDate(t.op_date); setECat(t.category_id ? String(t.category_id) : ''); setESum(String(t.amount));
-    setEMethod(t.payment_method); setEBank(t.bank_id ? String(t.bank_id) : ''); setEComment(t.comment || '');
+    setEMethod(t.payment_method); setEBank(t.bank_id ? String(t.bank_id) : '');
+    setETask(t.task_id ? String(t.task_id) : ''); setEComment(t.comment || '');
   };
 
   const saveTxEdit = async () => {
     if (!+eSum) { showToast('Сумма должна быть больше нуля', 'error'); return; }
-    const ok = await db.updateTransaction(editTx, {
+    const patch = {
       op_date: eDate, category_id: eCat ? +eCat : null, amount: +eSum,
       payment_method: eMethod, bank_id: eMethod === 'transfer' ? +eBank || null : null,
-      comment: eComment.trim(),
-    });
+      comment: eComment.trim(), task_id: eTask ? +eTask : null,
+    };
+    // Привязка к задаче подтягивает клиента задачи, отвязка — очищает
+    if ((patch.task_id || null) !== (editTx.task_id || null)) {
+      patch.client_id = patch.task_id ? tasks.find(x => x.id === patch.task_id)?.client_id || null : null;
+    }
+    const ok = await db.updateTransaction(editTx, patch);
     if (!ok) return;
     setEditTx(null);
     showToast('Операция исправлена ✓ (записано в историю)');
@@ -883,6 +989,17 @@ function OwnerView(props) {
               }}>
                 <option value="">На какую карту (банк)…</option>
                 {banks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            )}
+            {/* Привязка к задаче задним числом: «записала в оплаты, но не расписала задачу» */}
+            {editTx.type === 'income' && (
+              <select value={eTask} onChange={e => setETask(e.target.value)} style={{
+                width: '100%', padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 14, outline: 'none',
+              }}>
+                <option value="">Без задачи…</option>
+                {tasks.filter(x => !x.done || x.id === editTx.task_id).map(x => (
+                  <option key={x.id} value={x.id}>{x.title}</option>
+                ))}
               </select>
             )}
             <input value={eComment} onChange={e => setEComment(e.target.value)} placeholder="Комментарий" style={{

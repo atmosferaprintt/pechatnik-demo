@@ -524,6 +524,8 @@ export default function App() {
       if ('amount' in patch && +patch.amount !== +t.amount) diffs.push(`сумма ${t.amount} → ${patch.amount} ₽`);
       if ('category_id' in patch && patch.category_id !== t.category_id) diffs.push(`категория ${catN(t.category_id)} → ${catN(patch.category_id)}`);
       if ('payment_method' in patch && patch.payment_method !== t.payment_method) diffs.push(`способ ${mL(t.payment_method)} → ${mL(patch.payment_method)}`);
+      if ('bank_id' in patch && (patch.bank_id || null) !== (t.bank_id || null)) diffs.push(patch.bank_id ? `карта → ${banks.find(b => b.id === patch.bank_id)?.name || '?'}` : 'карта убрана');
+      if ('task_id' in patch && (patch.task_id || null) !== (t.task_id || null)) diffs.push(patch.task_id ? `привязала к задаче «${tasks.find(x => x.id === patch.task_id)?.title || patch.task_id}»` : 'отвязала от задачи');
       if ('comment' in patch && (patch.comment || '') !== (t.comment || '')) diffs.push('комментарий');
       const action = diffs.length ? `исправила: ${diffs.join(', ')}` : 'исправила запись';
       const logEntry = { who: currentUser.name, action, time: logTimeNow() };

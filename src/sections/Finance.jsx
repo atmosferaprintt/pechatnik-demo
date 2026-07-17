@@ -11,8 +11,15 @@ export default function Finance(props) {
 }
 
 const fmt = (n) => (n || 0).toLocaleString('ru-RU');
-// Общий чек для разбитой на статьи оплаты (вызывается из обработчика, не при рендере)
-const newBatchId = () => (globalThis.crypto?.randomUUID ? crypto.randomUUID() : 'b' + Math.random().toString(36).slice(2));
+// Общий чек для разбитой на статьи оплаты. ВАЖНО: crypto.randomUUID есть только на HTTPS,
+// а мы пока на http://IP — поэтому свой генератор валидного UUID v4.
+const newBatchId = () => {
+  if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.floor(Math.random() * 16);
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+};
 
 // ---------- Общая форма записи операции ----------
 // У дохода: привязка к задаче (или создание новой задачи на месте) и разбивка суммы
@@ -26,6 +33,7 @@ function EntryForm({ categories, banks, tasks, clients, db, PAYMENT_METHODS, UI,
   const [taskId, setTaskId] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskClient, setNewTaskClient] = useState('');
+  const [newTaskFull, setNewTaskFull] = useState(''); // полная сумма заказа: больше оплаты → разница станет долгом
   const [comment, setComment] = useState('');
 
   // Сотруднику — только доходные и общие расходные категории.
@@ -47,7 +55,7 @@ function EntryForm({ categories, banks, tasks, clients, db, PAYMENT_METHODS, UI,
 
   const resetForm = () => {
     setRows([{ cat: '', sum: '' }]);
-    setComment(''); setTaskId(''); setNewTaskTitle(''); setNewTaskClient('');
+    setComment(''); setTaskId(''); setNewTaskTitle(''); setNewTaskClient(''); setNewTaskFull('');
   };
 
   const save = async () => {
@@ -59,9 +67,12 @@ function EntryForm({ categories, banks, tasks, clients, db, PAYMENT_METHODS, UI,
     let linkClientId = null;
     if (type === 'income' && taskId === '__new') {
       if (!newTaskTitle.trim()) { showToast('Укажи название новой задачи', 'error'); return; }
+      // Сумма заказа: полная (если указана) — тогда неоплаченный остаток сразу виден как долг
+      const fullAmount = +newTaskFull > 0 ? +newTaskFull : total;
+      if (+newTaskFull > 0 && +newTaskFull < total) { showToast('Сумма заказа не может быть меньше оплаты', 'error'); return; }
       const created = await db.addTask({
         title: newTaskTitle.trim(), client_id: newTaskClient ? +newTaskClient : null,
-        amount: total, deadline: null, assignee: currentUser.name, description: comment,
+        amount: fullAmount, deadline: null, assignee: currentUser.name, description: comment,
         _firstAction: 'приняла (создана из оплаты)',
       });
       if (!created) return;
@@ -71,11 +82,12 @@ function EntryForm({ categories, banks, tasks, clients, db, PAYMENT_METHODS, UI,
 
     // Разбивка на статьи: несколько операций одним чеком (общий batch_id)
     const batch = filled.length > 1 ? newBatchId() : null;
-    onSave(filled.map(r => ({
+    const ok = await onSave(filled.map(r => ({
       type, category_id: +r.cat, amount: +r.sum,
       payment_method: method, bank_id: method === 'transfer' ? +bankId || null : null,
       task_id: linkTaskId, client_id: linkClientId, batch_id: batch, comment,
     })));
+    if (ok === false || ok === null) return; // ошибка — ввод не сбрасываем, тост уже показан
     resetForm();
   };
 
@@ -163,7 +175,12 @@ function EntryForm({ categories, banks, tasks, clients, db, PAYMENT_METHODS, UI,
                 <option value="">Клиент (необязательно)…</option>
                 {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-              <div style={{ color: UI.muted, fontSize: 12 }}>Задача появится в твоём задачнике, оплата привяжется к ней сразу</div>
+              <input style={input} type="number" placeholder="Сумма заказа целиком, ₽ (если больше оплаты)" value={newTaskFull} onChange={e => setNewTaskFull(e.target.value)} />
+              <div style={{ color: UI.muted, fontSize: 12 }}>
+                {+newTaskFull > 0 && total > 0 && +newTaskFull > total
+                  ? `Оплачено ${fmt(total)} ₽ из ${fmt(+newTaskFull)} ₽ — долг ${fmt(+newTaskFull - total)} ₽ повиснет на задаче`
+                  : 'Задача появится в твоём задачнике, оплата привяжется сразу. Укажи полную сумму заказа — остаток станет долгом'}
+              </div>
             </div>
           )}
         </>
@@ -257,9 +274,10 @@ function EmployeeView(props) {
               <div style={{ borderTop: `1px solid ${UI.line}`, marginBottom: 16 }} />
             </>
           )}
-          <EntryForm {...props} onSave={(recs) => {
-            db.addTransactions(recs);
-            showToast(recs.length > 1 ? `Записано ${recs.length} статьями ✓` : 'Записано ✓');
+          <EntryForm {...props} onSave={async (recs) => {
+            const ok = await db.addTransactions(recs);
+            if (ok) showToast(recs.length > 1 ? `Записано ${recs.length} статьями ✓` : 'Записано ✓');
+            return ok;
           }} />
         </div>
 
@@ -610,10 +628,13 @@ function OwnerView(props) {
               <span style={{ fontWeight: 800, fontSize: 17 }}>Новая операция</span>
               <button onClick={() => setShowAddOp(false)} style={{ marginLeft: 'auto', border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 15 }}>✕</button>
             </div>
-            <EntryForm {...props} isOwner onSave={(recs) => {
-              db.addTransactions(recs);
-              setShowAddOp(false);
-              showToast(recs.length > 1 ? `Записано ${recs.length} статьями ✓` : 'Записано ✓');
+            <EntryForm {...props} isOwner onSave={async (recs) => {
+              const ok = await db.addTransactions(recs);
+              if (ok) {
+                setShowAddOp(false);
+                showToast(recs.length > 1 ? `Записано ${recs.length} статьями ✓` : 'Записано ✓');
+              }
+              return ok;
             }} />
           </div>
         </div>

@@ -28,7 +28,7 @@ function deadlineStatus(t) {
   return 'ok';
 }
 
-export default function Tasks({ tasks, clients, contractors, transactions, categories, banks, currentUser, isOwner, db, PAYMENT_METHODS, PEOPLE_COLUMNS, STAGES, UI, showToast }) {
+export default function Tasks({ tasks, clients, contractors, transactions, categories, currentUser, isOwner, db, PEOPLE_COLUMNS, STAGES, UI, showToast, onPayTask }) {
   const [openTask, setOpenTask] = useState(null);
   const [view, setView] = useState('board'); // board | debts | done
   // Форма новой задачи (и правки существующей — editTask)
@@ -55,11 +55,6 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
   // Решение Кристи 2026-07-17: редактировать могут ВСЕ (страховка — история «кто что менял»).
   // Удаление — только владелец.
   const canEdit = () => true;
-  const [showPayForm, setShowPayForm] = useState(false);
-  const [payAmount, setPayAmount] = useState('');
-  const [payMethod, setPayMethod] = useState('cash');
-  const [payBank, setPayBank] = useState('');
-  const [payCat, setPayCat] = useState('');
 
   const client = (id) => clients.find(c => c.id === id);
   const clientShort = (id) => client(id)?.name?.split('·')[0]?.trim() || '—';
@@ -67,7 +62,6 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
   const payments = (taskId) => transactions.filter(t => t.task_id === taskId && t.type === 'income');
   const paidSum = (taskId) => payments(taskId).reduce((s, p) => s + p.amount, 0);
   const catName = (id) => categories.find(c => c.id === id)?.name || '?';
-  const incomeCats = categories.filter(c => c.kind === 'income');
   const taskDebt = (t) => (t.amount || 0) - paidSum(t.id);
 
   // Поиск по названию/клиенту + быстрые фильтры «с долгом» и «горят»
@@ -171,23 +165,6 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
     showToast(`Отметка: ${action} ✓`);
   };
 
-  const openPayForm = (debt) => {
-    setPayAmount(debt > 0 ? String(debt) : '');
-    setPayCat(''); setPayMethod('cash'); setPayBank('');
-    setShowPayForm(true);
-  };
-
-  const savePayment = (t) => {
-    if (!payCat || !payAmount) { showToast('Выбери категорию и сумму', 'error'); return; }
-    db.addTransactions([{
-      type: 'income', category_id: +payCat, amount: +payAmount,
-      payment_method: payMethod, bank_id: payMethod === 'transfer' ? +payBank || null : null,
-      task_id: t.id, client_id: t.client_id, comment: t.title,
-    }]);
-    setShowPayForm(false);
-    showToast('Оплата записана ✓');
-  };
-
   const openEdit = (t) => {
     setEditTask(t);
     setNTitle(t.title); setNClient(t.client_id ? String(t.client_id) : ''); setNAmount(t.amount ? String(t.amount) : '');
@@ -265,12 +242,15 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
     showToast(`«${t.title}» скопирована к тебе`);
   };
 
-  // Чип статуса оплаты: ✓ оплачено / долг (small — компактный вариант для карточек доски)
+  // Чип статуса оплаты: ✓ оплачено / долг / переплата (small — компактный вариант для карточек доски)
   const PayChip = ({ t, small }) => {
     if (!t.amount && !paidSum(t.id)) return null; // без суммы — нечего показывать
     const debt = (t.amount || 0) - paidSum(t.id);
     const pad = small ? '2px 7px' : '4px 10px';
     const fs = small ? 11 : 12.5;
+    if (t.amount > 0 && debt < 0) return (
+      <span style={{ background: 'rgba(243,156,18,.22)', color: '#8a5a00', borderRadius: 999, padding: pad, fontSize: fs, fontWeight: 700 }}>переплата {fmt(-debt)}</span>
+    );
     if (debt <= 0) return (
       <span style={{ background: 'rgba(247,214,74,.5)', borderRadius: 999, padding: pad, fontSize: fs, fontWeight: 700 }}>✓{small ? '' : ' оплачено'}</span>
     );
@@ -375,6 +355,21 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
               </div>
             )}
 
+            {/* При правке: оплаты уже зафиксированы в Финансах — сразу видно, что даст новая сумма */}
+            {editTask && paidSum(editTask.id) > 0 && (() => {
+              const already = paidSum(editTask.id);
+              const willBe = (nParts.length ? nParts.reduce((s, p) => s + (+p.sum || 0), 0) : +nAmount) || 0;
+              const d = willBe - already;
+              return (
+                <div style={{
+                  borderRadius: 14, padding: '9px 13px', fontSize: 12.5, fontWeight: 600,
+                  background: d < 0 ? 'rgba(243,156,18,.15)' : UI.soft, color: d < 0 ? '#8a5a00' : UI.muted,
+                }}>
+                  По задаче уже оплачено {fmt(already)} — {d > 0 ? `останется долг ${fmt(d)}` : d < 0 ? `получится переплата ${fmt(-d)}` : 'сумма сойдётся ✓'}. Сами оплаты правка не трогает.
+                </div>
+              );
+            })()}
+
             <div style={{ display: 'flex', gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.muted, textTransform: 'uppercase', letterSpacing: 0.4, margin: '0 0 4px 6px' }}><I n="clock" size={12} /> Дедлайн</div>
@@ -440,14 +435,12 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
             {view === 'debts' ? 'Висят здесь, пока клиент не оплатит. Клик — открыть и записать оплату.' : 'Архив. Клик — открыть карточку.'}
           </div>
           {(view === 'debts' ? debtTasks : doneTasks).map(t => (
-            <div key={t.id} onClick={() => { setOpenTask(t); setShowPayForm(false); }} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '12px 4px', borderBottom: `1px solid ${UI.line}`, fontSize: 14, cursor: 'pointer' }}>
+            <div key={t.id} onClick={() => setOpenTask(t)} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '12px 4px', borderBottom: `1px solid ${UI.line}`, fontSize: 14, cursor: 'pointer' }}>
               <span style={{ fontWeight: 700 }}>{t.title}</span>
               <span style={{ color: UI.muted, fontSize: 12.5 }}>{clientShort(t.client_id)}</span>
               <span style={{ color: UI.muted, fontSize: 12.5 }}>{t.log?.length ? t.log[t.log.length - 1].time : ''}</span>
               <span style={{ marginLeft: 'auto', fontWeight: 700 }}>{fmt(t.amount)}</span>
-              {view === 'debts'
-                ? <span className="blink" style={{ background: '#c0392b', color: '#fff', borderRadius: 999, padding: '4px 12px', fontSize: 12.5, fontWeight: 700 }}>долг {fmt(taskDebt(t))}</span>
-                : <span style={{ background: 'rgba(247,214,74,.5)', borderRadius: 999, padding: '4px 12px', fontSize: 12.5, fontWeight: 700 }}>✓ оплачено</span>}
+              <PayChip t={t} />
             </div>
           ))}
           {!(view === 'debts' ? debtTasks : doneTasks).length && (
@@ -486,7 +479,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                   <div data-tid={t.id} draggable
                     onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(t.id)); setDragId(t.id); }}
                     onDragEnd={() => { setDragId(null); setDropAt(null); }}
-                    onClick={() => { setOpenTask(t); setShowPayForm(false); }} style={{
+                    onClick={() => setOpenTask(t)} style={{
                     background: '#fff', borderRadius: 15, padding: '9px 10px 8px', marginBottom: 7, boxShadow: UI.shadow, cursor: 'pointer',
                     opacity: dragId === t.id ? 0.35 : personFlt || mine ? 1 : 0.75,
                   }}>
@@ -598,8 +591,9 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
                 <Fact label="Клиент" value={c ? c.name : '—'} sub={c?.phone} UI={UI} />
-                <Fact label="Оплата" value={debt <= 0 ? '✓ оплачено' : `долг ${fmt(debt)}`} danger={debt > 0}
-                  sub={`заказ ${fmt(t.amount)}${paidTotal ? ` · внесено ${fmt(paidTotal)}` : ''}`} UI={UI} />
+                <Fact label="Оплата" value={t.amount > 0 && debt < 0 ? `переплата ${fmt(-debt)}` : debt <= 0 ? '✓ оплачено' : `долг ${fmt(debt)}`}
+                  danger={debt > 0} accent={t.amount > 0 && debt < 0}
+                  sub={`заказ ${fmt(t.amount)} · оплачено ${fmt(paidTotal)}`} UI={UI} />
                 <Fact label="Дедлайн" value={dm(t.deadline)} danger={dlStatus === 'overdue'} accent={dlStatus === 'soon'}
                   sub={dlStatus === 'overdue' ? 'просрочено!' : dlStatus === 'soon' ? 'горит' : 'в графике'} UI={UI} />
                 <Fact label="У кого" value={t.assignee} UI={UI} />
@@ -676,67 +670,38 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                   <span style={{ marginLeft: 'auto', fontWeight: 700 }}>+{fmt(p.amount)}</span>
                 </div>
               )) : (
-                <div style={{ color: UI.muted, fontSize: 13.5 }}>Оплат пока нет</div>
+                <div style={{ color: UI.muted, fontSize: 13.5 }}>Оплат пока нет — записываются в Финансах с привязкой к задаче</div>
+              )}
+              {/* Мини-счёт: заказ − оплачено = долг / переплата. Оплаты живут в Финансах и при правке задачи не трогаются */}
+              {paid.length > 0 && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', padding: '10px 2px 2px', fontSize: 13.5 }}>
+                  <span style={{ fontWeight: 800 }}>Итого оплачено {fmt(paidTotal)}</span>
+                  <span style={{ marginLeft: 'auto', fontWeight: 700, color: debt > 0 ? '#c0392b' : t.amount > 0 && debt < 0 ? '#8a5a00' : UI.muted }}>
+                    {debt > 0 ? `долг ${fmt(debt)}` : t.amount > 0 && debt < 0 ? `переплата ${fmt(-debt)}` : 'в расчёте ✓'}
+                  </span>
+                </div>
               )}
 
-              {/* Записать оплату прямо из карточки — сумма подставляется из долга */}
-              {showPayForm ? (
-                <div style={{ background: UI.soft, borderRadius: 18, padding: 16, marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <select value={payCat} onChange={e => setPayCat(e.target.value)} style={{
-                      flex: 1.4, padding: '11px 12px', borderRadius: 14, border: `1px solid ${UI.line}`, background: '#fff', fontSize: 14, outline: 'none',
-                    }}>
-                      <option value="">Категория…</option>
-                      {incomeCats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                    <input type="number" value={payAmount} onChange={e => setPayAmount(e.target.value)} placeholder="Сумма" style={{
-                      flex: 1, padding: '11px 12px', borderRadius: 14, border: `1px solid ${UI.line}`, background: '#fff', fontSize: 15, fontWeight: 700, outline: 'none', minWidth: 0,
-                    }} />
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {PAYMENT_METHODS.filter(m => m.key !== 'deposit').map(m => (
-                      <button key={m.key} onClick={() => setPayMethod(m.key)} style={{
-                        border: 'none', borderRadius: 999, padding: '7px 13px', fontSize: 12.5, fontWeight: 600,
-                        background: payMethod === m.key ? UI.accent : '#fff',
-                      }}>{m.label}</button>
-                    ))}
-                  </div>
-                  {payMethod === 'transfer' && (
-                    <select value={payBank} onChange={e => setPayBank(e.target.value)} style={{
-                      padding: '11px 12px', borderRadius: 14, border: `1px solid ${UI.line}`, background: '#fff', fontSize: 14, outline: 'none',
-                    }}>
-                      <option value="">На какую карту (банк)…</option>
-                      {banks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </select>
-                  )}
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => savePayment(t)} style={{ flex: 1, border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '12px 0', fontWeight: 800, fontSize: 14 }}>
-                      Записать оплату
-                    </button>
-                    <button onClick={() => setShowPayForm(false)} style={{ border: 'none', background: '#fff', borderRadius: 999, padding: '12px 18px', fontSize: 14 }}>Отмена</button>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
-                  {debt > 0 && (
-                    <button onClick={() => openPayForm(debt)} style={{
-                      flex: 1, border: 'none', background: UI.accent, color: UI.dark, borderRadius: 999, padding: '13px 0', fontWeight: 800, fontSize: 14, minWidth: 200,
-                    }}><I n="wallet" size={14} /> Записать оплату ({fmt(debt)})</button>
-                  )}
-                  {canEdit(t) && (t.done ? (
-                    <button onClick={() => reopenTask(t)} style={{
-                      border: 'none', background: UI.soft, borderRadius: 999, padding: '13px 18px', fontWeight: 700, fontSize: 14,
-                    }}>↩ Вернуть в работу</button>
-                  ) : (
-                    <button onClick={() => finishTask(t)} style={{
-                      border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '13px 18px', fontWeight: 800, fontSize: 14,
-                    }}>✓ Заказ выдан</button>
-                  ))}
-                  <button onClick={() => repeatTask(t)} style={{
+              {/* Оплата фиксируется ТОЛЬКО в Финансах (решение 2026-07-17) — кнопка ведёт туда с уже привязанной задачей */}
+              <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+                {debt > 0 && (
+                  <button onClick={() => onPayTask(t)} style={{
+                    flex: 1, border: 'none', background: UI.accent, color: UI.dark, borderRadius: 999, padding: '13px 0', fontWeight: 800, fontSize: 14, minWidth: 200,
+                  }}><I n="wallet" size={14} /> Записать оплату ({fmt(debt)}) → Финансы</button>
+                )}
+                {canEdit(t) && (t.done ? (
+                  <button onClick={() => reopenTask(t)} style={{
                     border: 'none', background: UI.soft, borderRadius: 999, padding: '13px 18px', fontWeight: 700, fontSize: 14,
-                  }}><I n="repeat" size={13} /> Повторить</button>
-                </div>
-              )}
+                  }}>↩ Вернуть в работу</button>
+                ) : (
+                  <button onClick={() => finishTask(t)} style={{
+                    border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '13px 18px', fontWeight: 800, fontSize: 14,
+                  }}>✓ Заказ выдан</button>
+                ))}
+                <button onClick={() => repeatTask(t)} style={{
+                  border: 'none', background: UI.soft, borderRadius: 999, padding: '13px 18px', fontWeight: 700, fontSize: 14,
+                }}><I n="repeat" size={13} /> Повторить</button>
+              </div>
             </div>
           </div>
         );

@@ -24,13 +24,14 @@ const newBatchId = () => {
 // ---------- Общая форма записи операции ----------
 // У дохода: привязка к задаче (или создание новой задачи на месте) и разбивка суммы
 // на несколько статей дохода — просьбы Кристи от 2026-07-15.
-function EntryForm({ categories, banks, tasks, clients, db, PAYMENT_METHODS, UI, currentUser, isOwner, showToast, onSave }) {
+function EntryForm({ categories, banks, tasks, clients, transactions, db, PAYMENT_METHODS, UI, currentUser, isOwner, showToast, onSave, prefillTaskId }) {
   const [type, setType] = useState('income');
   const [scope, setScope] = useState('work'); // для расходов владельца: work | personal
   const [rows, setRows] = useState([{ cat: '', sum: '' }]); // статьи: доход можно разбить на несколько
   const [method, setMethod] = useState('cash');
   const [bankId, setBankId] = useState('');
-  const [taskId, setTaskId] = useState('');
+  // Пришли из карточки задачи по кнопке «Записать оплату» — задача сразу выбрана
+  const [taskId, setTaskId] = useState(prefillTaskId ? String(prefillTaskId) : '');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskClient, setNewTaskClient] = useState('');
   const [newTaskFull, setNewTaskFull] = useState(''); // полная сумма заказа: больше оплаты → разница станет долгом
@@ -45,7 +46,10 @@ function EntryForm({ categories, banks, tasks, clients, db, PAYMENT_METHODS, UI,
       ? c.kind === 'expense_personal'
       : c.kind === 'expense_shared' || c.kind === 'expense_work';
   });
-  const openTasks = tasks.filter(t => !t.done);
+  // К оплате можно привязать открытые задачи + выданные с долгом (долг гасится тоже отсюда)
+  const paidOf = (id) => transactions.filter(x => x.task_id === id && x.type === 'income').reduce((s, x) => s + x.amount, 0);
+  const taskDebt = (t) => (t.amount || 0) - paidOf(t.id);
+  const linkTasks = tasks.filter(t => !t.done || taskDebt(t) > 0);
 
   const kindLabel = { expense_shared: '', expense_work: ' · рабочие (приватные)', expense_personal: '' };
 
@@ -166,8 +170,26 @@ function EntryForm({ categories, banks, tasks, clients, db, PAYMENT_METHODS, UI,
           <select style={input} value={taskId} onChange={e => setTaskId(e.target.value)}>
             <option value="">Привязать к задаче (необязательно)…</option>
             <option value="__new">+ Создать новую задачу…</option>
-            {openTasks.map(t => <option key={t.id} value={t.id}>{t.title} · {fmt(t.amount)} ₽</option>)}
+            {linkTasks.map(t => (
+              <option key={t.id} value={t.id}>
+                {t.title}{taskDebt(t) > 0 ? ` · долг ${fmt(taskDebt(t))} ₽` : ` · ${fmt(t.amount)} ₽`}{t.done ? ' (выдана)' : ''}
+              </option>
+            ))}
           </select>
+          {taskId && taskId !== '__new' && (() => {
+            // Мини-счёт по выбранной задаче + предупреждение, если вносят больше долга
+            const t = tasks.find(x => x.id === +taskId);
+            if (!t) return null;
+            const paid = paidOf(t.id);
+            const debt = (t.amount || 0) - paid;
+            const over = total > 0 && total > debt;
+            return (
+              <div style={{ color: over ? '#8a5a00' : UI.muted, fontSize: 12, padding: '0 6px' }}>
+                Заказ {fmt(t.amount)} ₽ · оплачено {fmt(paid)} ₽ · {debt > 0 ? `долг ${fmt(debt)} ₽` : debt < 0 ? `переплата ${fmt(-debt)} ₽` : 'в расчёте ✓'}
+                {over ? ` — вносишь ${fmt(total)} ₽, по задаче будет переплата ${fmt(total - Math.max(debt, 0))} ₽` : ''}
+              </div>
+            );
+          })()}
           {taskId === '__new' && (
             <div style={{ background: 'rgba(247,214,74,.15)', border: `1.5px solid ${UI.accent}`, borderRadius: 16, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
               <input style={input} placeholder="Название новой задачи (визитки 500 шт…)" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} />
@@ -407,7 +429,8 @@ const RU_DATE = (d) => `${+d.slice(8, 10)} ${['января', 'февраля', 
 
 function OwnerView(props) {
   const { transactions, categories, banks, tasks, demoBankRows, dayClosures, db, UI, PAYMENT_METHODS, showToast } = props;
-  const [showAddOp, setShowAddOp] = useState(false);
+  // Пришли из карточки задачи — форма операции сразу открыта (задача подставится в EntryForm)
+  const [showAddOp, setShowAddOp] = useState(!!props.prefillTaskId);
   const [opDate, setOpDate] = useState(props.db.today); // история дней: смотрим любой день
   const [txQuery, setTxQuery] = useState('');
   const [txType, setTxType] = useState(''); // '' | income | expense

@@ -231,6 +231,8 @@ export default function App() {
   const [workMode, setWorkMode] = useState('owner');
   const [tab, setTab] = useState(() => localStorage.getItem('tab') || 'tasks');
   const [toast, setToast] = useState(null);
+  // «Записать оплату» из карточки задачи → Финансы с уже привязанной задачей (оплата фиксируется только там)
+  const [payTaskId, setPayTaskId] = useState(null);
 
   const [clients, setClients] = useState(DEMO ? DEMO_CLIENTS : []);
   const [tasks, setTasks] = useState(DEMO ? DEMO_TASKS : []);
@@ -784,7 +786,7 @@ export default function App() {
           order: isMobile ? 2 : 0, width: isMobile ? '100%' : 'auto',
         }}>
           {visibleTabs.map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)} style={{
+            <button key={t.key} onClick={() => { setPayTaskId(null); setTab(t.key); }} style={{
               border: 'none', borderRadius: 999, padding: '9px 18px', fontSize: 14, fontWeight: 600,
               background: tab === t.key ? UI.dark : 'transparent',
               color: tab === t.key ? '#fff' : UI.dark,
@@ -819,19 +821,19 @@ export default function App() {
             {!isMobile && <>{currentUser?.name} · {ROLES[userRole]}</>}
           </span>
           {!DEMO && (
-            <button onClick={() => supabase.auth.signOut()} style={{ border: 'none', background: UI.card, borderRadius: 999, padding: '9px 16px', boxShadow: UI.shadow, fontSize: 13 }}>Выйти</button>
+            <button onClick={() => { setPayTaskId(null); supabase.auth.signOut(); }} style={{ border: 'none', background: UI.card, borderRadius: 999, padding: '9px 16px', boxShadow: UI.shadow, fontSize: 13 }}>Выйти</button>
           )}
         </div>
       </header>
 
       <main>
         {tab === 'home' && <Dashboard {...sectionProps} onOpenTab={setTab} />}
-        {tab === 'tasks' && <Tasks {...sectionProps} />}
+        {tab === 'tasks' && <Tasks {...sectionProps} onPayTask={(t) => { setPayTaskId(t.id); setTab('finance'); }} />}
         {tab === 'clients' && <Clients {...sectionProps} />}
         {tab === 'contractors' && <Contractors {...sectionProps} />}
         {tab === 'deposits' && <Deposits {...sectionProps} />}
         {tab === 'supply' && <Supply {...sectionProps} />}
-        {tab === 'finance' && <Finance {...sectionProps} />}
+        {tab === 'finance' && <Finance {...sectionProps} prefillTaskId={payTaskId} />}
         {tab === 'analytics' && isOwner && <Analytics {...sectionProps} />}
         {tab === 'settings' && isOwner && <Settings {...sectionProps} />}
       </main>

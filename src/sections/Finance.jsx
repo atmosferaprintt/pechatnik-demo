@@ -202,7 +202,7 @@ function EntryForm({ categories, banks, tasks, clients, db, PAYMENT_METHODS, UI,
 // Вид сотрудника (с 2026-07-16, просьба Кристи): доступ к сегодня + вчера,
 // закрытие смены и перенос вчерашних оплат на сегодня. Итоги по банку/месяцу — только у Кристи.
 function EmployeeView(props) {
-  const { transactions, categories, banks, currentUser, dayClosures, db, quickOps, PAYMENT_METHODS, UI, showToast } = props;
+  const { transactions, categories, banks, currentUser, isOwnerAccount, dayClosures, db, quickOps, PAYMENT_METHODS, UI, showToast } = props;
   const TODAY_D = db.today;
   const YESTERDAY_D = db.yesterday;
   const [opDate, setOpDate] = useState(TODAY_D);
@@ -327,12 +327,12 @@ function EmployeeView(props) {
                   color: t.created_by === currentUser.name ? UI.dark : '#fff',
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0,
                 }}>{t.created_by[0]}</span>
-                {!isToday && t.created_by === currentUser.name && (
+                {!isToday && (t.created_by === currentUser.name || isOwnerAccount) && (
                   <button onClick={() => moveToToday(t)} title="Перенести на сегодня" style={{
                     border: 'none', background: UI.soft, borderRadius: 999, padding: '5px 12px', fontSize: 12, fontWeight: 700,
                   }}>↪ на сегодня</button>
                 )}
-                {isToday && t.created_by === currentUser.name && (
+                {isToday && (t.created_by === currentUser.name || isOwnerAccount) && (
                   <>
                     <button onClick={() => { db.moveTxToYesterday(t); showToast('Перенесена во вчера ↩'); }} title="Эта оплата была вчера — перенести" style={{
                       border: 'none', background: UI.soft, borderRadius: 999, padding: '5px 12px', fontSize: 12, fontWeight: 700,

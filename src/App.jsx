@@ -763,7 +763,7 @@ export default function App() {
 
   const visibleTabs = TABS.filter(t => t.roles.includes(userRole));
   const sectionProps = {
-    supabase, currentUser, userRole, isOwner, showToast, onUpdate: loadAll, loadAllRows, db,
+    supabase, currentUser, userRole, isOwner, isOwnerAccount, showToast, onUpdate: loadAll, loadAllRows, db,
     clients, tasks, categories, banks, transactions, contractors, contractorTasks, deposits,
     manualDebts, supply, dayClosures, quickOps, CONTRACTOR_STAGES,
     PEOPLE_COLUMNS: peopleColumns, users, demoBankRows: DEMO ? DEMO_BANK_ROWS : [],

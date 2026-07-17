@@ -202,15 +202,18 @@ function EntryForm({ categories, banks, tasks, clients, db, PAYMENT_METHODS, UI,
 // Вид сотрудника (с 2026-07-16, просьба Кристи): доступ к сегодня + вчера,
 // закрытие смены и перенос вчерашних оплат на сегодня. Итоги по банку/месяцу — только у Кристи.
 function EmployeeView(props) {
-  const { transactions, categories, currentUser, dayClosures, db, quickOps, UI, showToast } = props;
+  const { transactions, categories, banks, currentUser, dayClosures, db, quickOps, PAYMENT_METHODS, UI, showToast } = props;
   const TODAY_D = db.today;
   const YESTERDAY_D = db.yesterday;
   const [opDate, setOpDate] = useState(TODAY_D);
   const [cashFact, setCashFact] = useState('');
+  const [mFlt, setMFlt] = useState(''); // фильтр по способу оплаты
   const isToday = opDate === TODAY_D;
 
   const catName = (id) => categories.find(c => c.id === id)?.name || '?';
   const catKind = (t) => categories.find(c => c.id === t.category_id)?.kind;
+  const mLabel = (k) => PAYMENT_METHODS.find(m => m.key === k)?.label || k;
+  const bankName = (id) => banks.find(b => b.id === id)?.name;
 
   // Девочкам видна операционка дня (без личных и крупных расходов Кристи)
   const dayTx = transactions.filter(t => t.op_date === opDate
@@ -285,13 +288,32 @@ function EmployeeView(props) {
           {/* Операции дня — видно всем, чтобы можно было закрыть смену */}
           <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 26 }}>
             <div style={{ fontWeight: 800, marginBottom: 4 }}>Операции за {isToday ? 'сегодня' : 'вчера'} · {dayTx.length}</div>
-            <div style={{ color: UI.muted, fontSize: 13, marginBottom: 14 }}>
+            <div style={{ color: UI.muted, fontSize: 13, marginBottom: 10 }}>
               {isToday ? 'Всё, что записано за день — по этому закрывается смена' : 'Вчерашний день: оплату можно перекинуть на сегодня ↪'}
             </div>
-            {dayTx.map(t => (
+            {/* Фильтр по способам оплаты — кнопки строятся из того, что есть в дне */}
+            {dayTx.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+                <button onClick={() => setMFlt('')} style={{
+                  border: 'none', borderRadius: 999, padding: '6px 13px', fontSize: 12, fontWeight: 700,
+                  background: mFlt === '' ? UI.dark : UI.soft, color: mFlt === '' ? '#fff' : UI.dark,
+                }}>Все</button>
+                {PAYMENT_METHODS.filter(m => m.key !== 'deposit' && dayTx.some(t => t.payment_method === m.key)).map(m => {
+                  const sum = dayTx.filter(t => t.payment_method === m.key && t.type === 'income').reduce((s, t) => s + t.amount, 0);
+                  return (
+                    <button key={m.key} onClick={() => setMFlt(v => v === m.key ? '' : m.key)} style={{
+                      border: 'none', borderRadius: 999, padding: '6px 13px', fontSize: 12, fontWeight: 700,
+                      background: mFlt === m.key ? UI.dark : UI.soft, color: mFlt === m.key ? '#fff' : UI.dark,
+                    }}>{m.label} · {fmt(sum)} ₽</button>
+                  );
+                })}
+              </div>
+            )}
+            {dayTx.filter(t => !mFlt || t.payment_method === mFlt).map(t => (
               <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
                 <I n={t.type === 'income' ? 'income' : 'expense'} size={14} style={{ color: t.type === 'income' ? '#8a8a85' : '#c0392b' }} />
-                <span style={{ fontWeight: 600 }}>{catName(t.category_id)}</span>
+                <span style={{ fontWeight: 600 }}>{t.category_id ? catName(t.category_id) : 'Оплата с депозита'}</span>
+                <span style={{ background: UI.soft, borderRadius: 999, padding: '2px 9px', fontSize: 11.5 }}>{mLabel(t.payment_method)}{t.bank_id ? ` · ${bankName(t.bank_id)}` : ''}</span>
                 {t.moved_from && <span style={{ background: 'rgba(247,214,74,.4)', borderRadius: 999, padding: '2px 9px', fontSize: 11.5, fontWeight: 700 }}>↪ со вчера</span>}
                 <span style={{ color: UI.muted, fontSize: 12.5 }}>{t.comment}</span>
                 <span style={{ marginLeft: 'auto', fontWeight: 700, color: t.type === 'expense' ? '#c0392b' : UI.dark }}>
@@ -364,6 +386,7 @@ function OwnerView(props) {
   const [opDate, setOpDate] = useState(props.db.today); // история дней: смотрим любой день
   const [txQuery, setTxQuery] = useState('');
   const [txType, setTxType] = useState(''); // '' | income | expense
+  const [txMethod, setTxMethod] = useState(''); // фильтр по способу оплаты
   // Правка операции (ошиблись в сумме/комментарии)
   const [txEditId, setTxEditId] = useState(null);
   const [txEditSum, setTxEditSum] = useState('');
@@ -477,11 +500,29 @@ function OwnerView(props) {
               }}><I n={icon} size={14} /></button>
             ))}
           </div>
+          {/* Фильтр по способам оплаты — из того, что есть в дне */}
+          {dailyTx.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+              <button onClick={() => setTxMethod('')} style={{
+                border: 'none', borderRadius: 999, padding: '6px 13px', fontSize: 12, fontWeight: 700,
+                background: txMethod === '' ? UI.dark : UI.soft, color: txMethod === '' ? '#fff' : UI.dark,
+              }}>Все</button>
+              {PAYMENT_METHODS.filter(m => dailyTx.some(t => t.payment_method === m.key)).map(m => {
+                const sum = dailyTx.filter(t => t.payment_method === m.key && t.type === 'income').reduce((s, t) => s + t.amount, 0);
+                return (
+                  <button key={m.key} onClick={() => setTxMethod(v => v === m.key ? '' : m.key)} style={{
+                    border: 'none', borderRadius: 999, padding: '6px 13px', fontSize: 12, fontWeight: 700,
+                    background: txMethod === m.key ? UI.dark : UI.soft, color: txMethod === m.key ? '#fff' : UI.dark,
+                  }}>{m.label} · {fmt(sum)} ₽</button>
+                );
+              })}
+            </div>
+          )}
           <div style={{ maxHeight: 430, overflowY: 'auto', paddingRight: 6 }}>
           {dailyTx.filter(t => {
             const q = txQuery.trim().toLowerCase();
             const label = (t.category_id ? catName(t.category_id) : 'депозит') + ' ' + (t.comment || '') + ' ' + t.created_by;
-            return (!q || label.toLowerCase().includes(q)) && (!txType || t.type === txType);
+            return (!q || label.toLowerCase().includes(q)) && (!txType || t.type === txType) && (!txMethod || t.payment_method === txMethod);
           }).map(t => (
             <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14, flexWrap: 'wrap' }}>
               <I n={t.type === 'income' ? 'income' : 'expense'} size={14} style={{ color: t.type === 'income' ? '#8a8a85' : '#c0392b' }} />

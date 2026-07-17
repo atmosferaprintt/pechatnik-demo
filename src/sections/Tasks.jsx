@@ -5,7 +5,7 @@
 // Задачи видны всем и передаются от человека к человеку; действия отмечаются бейджами с историей.
 // Клик по карточке → подробности: клиент, оплата, сроки, состав заказа, история действий.
 // Заглушка на демо-данных.
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import I from '../Icon.jsx';
 
 const fmt = (n) => (n || 0).toLocaleString('ru-RU') + ' ₽';
@@ -103,6 +103,60 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
     db.updateTask(task, { stage: STAGES[i] }, { who: currentUser.name, action: `→ этап: ${STAGES[i]}` });
     showToast(`«${task.title}» → ${STAGES[i]}`);
   };
+
+  // Перетаскивание карточек: вверх/вниз внутри колонки (очередь) и между колонками (смена этапа).
+  // Очередь — поле sort_order (NULL = по id): вставка серединой между соседями, одна строка на бросок.
+  // Смена очереди в историю не пишется (решение 2026-07-17), смена этапа — пишется, как кнопки ← →.
+  const [dragId, setDragId] = useState(null);
+  const [dropAt, setDropAt] = useState(null); // { stage, index } — куда встанет карточка
+  const orderKey = (t) => t.sort_order ?? t.id;
+  const byOrder = (a, b) => orderKey(a) - orderKey(b);
+
+  const dragOverCol = (e, stage) => {
+    if (dragId == null) return;
+    e.preventDefault();
+    // Индекс вставки — по серединам карточек колонки (выше середины = встать перед ней)
+    const cards = [...e.currentTarget.querySelectorAll('[data-tid]')];
+    let index = cards.length;
+    for (let i = 0; i < cards.length; i++) {
+      const r = cards[i].getBoundingClientRect();
+      if (e.clientY < r.top + r.height / 2) { index = i; break; }
+    }
+    setDropAt(d => d && d.stage === stage && d.index === index ? d : { stage, index });
+  };
+
+  const dropInCol = (stage, inCol) => {
+    const t = tasks.find(x => x.id === dragId);
+    const at = dropAt;
+    setDragId(null); setDropAt(null);
+    if (!t || !at || at.stage !== stage) return;
+
+    const oldIdx = inCol.findIndex(x => x.id === t.id);
+    const list = inCol.filter(x => x.id !== t.id); // колонка без самой карточки
+    const index = oldIdx !== -1 && at.index > oldIdx ? at.index - 1 : at.index;
+    const sameStage = (t.stage || 'Новая') === stage;
+    if (sameStage && index === oldIdx) return; // бросили туда же — ничего не меняем
+
+    const patch = sameStage ? {} : { stage };
+    const stageLog = sameStage ? undefined : { who: currentUser.name, action: `→ этап: ${stage}` };
+    if (list.length) {
+      const before = list[index - 1], after = list[index];
+      const ord = !before ? orderKey(after) - 1 : !after ? orderKey(before) + 1 : (orderKey(before) + orderKey(after)) / 2;
+      if (before && after && (ord === orderKey(before) || ord === orderKey(after))) {
+        // Зазор между соседями выродился (после очень многих перестановок) — перенумеровываем колонку
+        const newList = [...list.slice(0, index), t, ...list.slice(index)];
+        newList.forEach((x, i) => db.updateTask(x, x.id === t.id ? { ...patch, sort_order: i + 1 } : { sort_order: i + 1 }, x.id === t.id ? stageLog : undefined));
+        if (!sameStage) showToast(`«${t.title}» → ${stage}`);
+        return;
+      }
+      patch.sort_order = ord;
+    } else if (sameStage) return; // единственная в колонке — двигать некуда
+
+    db.updateTask(t, patch, stageLog);
+    if (!sameStage) showToast(`«${t.title}» → ${stage}`);
+  };
+
+  const DropLine = () => <div style={{ height: 4, background: UI.accent, borderRadius: 99, margin: '0 4px 7px', boxShadow: '0 0 0 1px rgba(29,29,31,.08)' }} />;
 
   // Передать задачу другому человеку — с записью в историю
   const transfer = (task, to) => {
@@ -411,24 +465,30 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
       {view === 'board' && (
       <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', overflowX: 'auto', paddingBottom: 8 }}>
         {STAGES.map((stage, si) => {
-          const inCol = activeTasks.filter(t => (t.stage || 'Новая') === stage && (!personFlt || t.assignee === personFlt));
+          const inCol = activeTasks.filter(t => (t.stage || 'Новая') === stage && (!personFlt || t.assignee === personFlt)).sort(byOrder);
           const sum = inCol.reduce((s, t) => s + (t.amount || 0), 0);
           return (
-            <div key={stage} style={{ minWidth: 230, flex: 1, background: stage === 'Готово' ? '#f0ecdf' : UI.soft, borderRadius: 20, padding: 10 }}>
+            <div key={stage} onDragOver={e => dragOverCol(e, stage)} onDrop={e => { e.preventDefault(); dropInCol(stage, inCol); }}
+              style={{ minWidth: 230, flex: 1, background: stage === 'Готово' ? '#f0ecdf' : UI.soft, borderRadius: 20, padding: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '0 2px' }}>
                 <span style={{ fontWeight: 800, fontSize: 14 }}>{stage}</span>
                 <span style={{ background: UI.dark, color: '#fff', borderRadius: 999, fontSize: 11.5, fontWeight: 700, padding: '2px 8px' }}>{inCol.length}</span>
                 {sum > 0 && <span style={{ marginLeft: 'auto', color: UI.muted, fontSize: 11.5, fontWeight: 600 }}>{fmt(sum)}</span>}
               </div>
 
-              {inCol.map(t => {
+              {inCol.map((t, ti) => {
                 const lastAction = t.log?.length ? t.log[t.log.length - 1] : null;
                 const mine = t.assignee === currentUser.name;
                 return (
                   // Компактная карточка; чужие — только просмотр (без кнопок)
-                  <div key={t.id} onClick={() => { setOpenTask(t); setShowPayForm(false); }} style={{
+                  <Fragment key={t.id}>
+                  {dropAt?.stage === stage && dropAt.index === ti && <DropLine />}
+                  <div data-tid={t.id} draggable
+                    onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(t.id)); setDragId(t.id); }}
+                    onDragEnd={() => { setDragId(null); setDropAt(null); }}
+                    onClick={() => { setOpenTask(t); setShowPayForm(false); }} style={{
                     background: '#fff', borderRadius: 15, padding: '9px 10px 8px', marginBottom: 7, boxShadow: UI.shadow, cursor: 'pointer',
-                    opacity: personFlt || mine ? 1 : 0.75,
+                    opacity: dragId === t.id ? 0.35 : personFlt || mine ? 1 : 0.75,
                   }}>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
                       <span style={{ fontWeight: 700, fontSize: 12.5, lineHeight: 1.25 }}>{t.title}</span>
@@ -463,8 +523,10 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                       )}
                     </div>
                   </div>
+                  </Fragment>
                 );
               })}
+              {dropAt?.stage === stage && dropAt.index === inCol.length && <DropLine />}
               {!inCol.length && <div style={{ color: UI.muted, fontSize: 12.5, padding: 6 }}>Пусто</div>}
             </div>
           );

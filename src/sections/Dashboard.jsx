@@ -7,7 +7,79 @@ const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
 const TODAY = new Date().toISOString().slice(0, 10);
 const TOMORROW = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
 
-export default function Dashboard({ transactions, tasks, clients, categories, dayClosures, demoBankRows, db, UI, onOpenTab }) {
+export default function Dashboard(props) {
+  return props.isOwner ? <OwnerDash {...props} /> : <EmployeeDash {...props} />;
+}
+
+// «Мой день» сотрудницы: только своё — мои задачи, мои сроки, что я записала. Без чужих итогов.
+function EmployeeDash({ transactions, tasks, currentUser, dayClosures, db, UI, onOpenTab }) {
+  const RU_D = (d) => `${+d.slice(8, 10)} ${['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'][+d.slice(5, 7) - 1]}`;
+
+  const myTasks = tasks.filter(t => !t.done && t.assignee === currentUser.name);
+  const myBurning = myTasks.filter(t => t.deadline && t.deadline <= TOMORROW && t.stage !== 'Готово');
+  const myTx = transactions.filter(t => t.op_date === db.today && t.created_by === currentUser.name);
+  const myIncome = myTx.filter(t => t.type === 'income' && t.payment_method !== 'deposit').reduce((s, t) => s + t.amount, 0);
+  const shiftClosed = dayClosures.some(c => c.date === db.today);
+  const yesterdayClosed = dayClosures.some(c => c.date === db.yesterday);
+
+  return (
+    <div>
+      <h1 style={{ fontSize: 34, fontWeight: 500, margin: '4px 0 20px' }}>Мой день · {RU_D(db.today)} · {currentUser.name}</h1>
+
+      {!yesterdayClosed && (
+        <button onClick={() => onOpenTab('finance')} style={{
+          border: 'none', textAlign: 'left', cursor: 'pointer', display: 'block', width: '100%', maxWidth: 560,
+          background: UI.dark, color: '#fff', borderRadius: 18, padding: '14px 20px', fontSize: 14, fontWeight: 600, marginBottom: 20,
+        }}>
+          <I n="moon" size={14} /> Вчерашняя смена не закрыта — <span style={{ color: UI.accent, fontWeight: 800 }}>закрыть →</span>
+        </button>
+      )}
+
+      <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
+        <Big label="Мои задачи в работе" value={String(myTasks.length)} UI={UI} />
+        <Big label="Горящие сроки" value={String(myBurning.length)} UI={UI} dark accent={myBurning.length > 0} />
+        <Big label={`Я записала сегодня · ${myTx.length} оп.`} value={`${fmt(myIncome)} ₽`} UI={UI} />
+      </div>
+
+      <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <Card title={`Мои горящие · ${myBurning.length}`} UI={UI} style={{ flex: 1, minWidth: 320 }}>
+          {myBurning.map(t => (
+            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
+              <span style={{ fontWeight: 700 }}>{t.title}</span>
+              <span style={{
+                marginLeft: 'auto', flexShrink: 0,
+                background: t.deadline < TODAY ? '#c0392b' : UI.accent, color: t.deadline < TODAY ? '#fff' : UI.dark,
+                borderRadius: 999, padding: '4px 12px', fontSize: 12.5, fontWeight: 700,
+              }}><I n="clock" size={11} /> {t.deadline < TODAY ? 'просрочено' : dm(t.deadline)}</span>
+            </div>
+          ))}
+          {!myBurning.length && <div style={{ color: UI.muted, fontSize: 14 }}>Всё в графике ✓</div>}
+          <button onClick={() => onOpenTab('tasks')} style={{
+            border: 'none', background: UI.soft, borderRadius: 999, padding: '9px 18px', fontSize: 13, fontWeight: 700, marginTop: 14,
+          }}>Мои задачи →</button>
+        </Card>
+
+        <Card title="Быстро" UI={UI} style={{ flex: 1, minWidth: 280 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <button onClick={() => onOpenTab('finance')} style={{ border: 'none', background: UI.accent, borderRadius: 999, padding: '13px 0', fontWeight: 800, fontSize: 14 }}>
+              Записать приход
+            </button>
+            <button onClick={() => onOpenTab('tasks')} style={{ border: 'none', background: UI.soft, borderRadius: 999, padding: '13px 0', fontWeight: 700, fontSize: 14 }}>
+              Открыть задачи
+            </button>
+            {!shiftClosed && (
+              <button onClick={() => onOpenTab('finance')} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '13px 0', fontWeight: 700, fontSize: 14 }}>
+                Закрыть смену (вечером)
+              </button>
+            )}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function OwnerDash({ transactions, tasks, clients, categories, dayClosures, demoBankRows, db, UI, onOpenTab }) {
   // Цифры дня: доход без депозит-оплат, расход — только бизнес (без личных)
   const dayTx = transactions.filter(t => t.op_date === db.today);
   const kindOf = (t) => categories.find(c => c.id === t.category_id)?.kind;

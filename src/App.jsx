@@ -55,7 +55,7 @@ const UI = {
 };
 
 const TABS = [
-  { key: 'home', label: 'Мой день', roles: ['owner'] },
+  { key: 'home', label: 'Мой день', roles: ['owner', 'employee'] },
   { key: 'tasks', label: 'Задачи', roles: ['owner', 'employee'] },
   { key: 'clients', label: 'Клиенты', roles: ['owner', 'employee'] },
   { key: 'contractors', label: 'Контрагенты', roles: ['owner', 'employee'] },
@@ -825,7 +825,7 @@ export default function App() {
       </header>
 
       <main>
-        {tab === 'home' && isOwner && <Dashboard {...sectionProps} onOpenTab={setTab} />}
+        {tab === 'home' && <Dashboard {...sectionProps} onOpenTab={setTab} />}
         {tab === 'tasks' && <Tasks {...sectionProps} />}
         {tab === 'clients' && <Clients {...sectionProps} />}
         {tab === 'contractors' && <Contractors {...sectionProps} />}

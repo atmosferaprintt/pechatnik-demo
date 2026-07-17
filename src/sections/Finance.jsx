@@ -327,15 +327,25 @@ function EmployeeView(props) {
                   color: t.created_by === currentUser.name ? UI.dark : '#fff',
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0,
                 }}>{t.created_by[0]}</span>
-                {!isToday && t.type === 'income' && (
+                {!isToday && t.created_by === currentUser.name && (
                   <button onClick={() => moveToToday(t)} title="Перенести на сегодня" style={{
                     border: 'none', background: UI.soft, borderRadius: 999, padding: '5px 12px', fontSize: 12, fontWeight: 700,
                   }}>↪ на сегодня</button>
                 )}
                 {isToday && t.created_by === currentUser.name && (
-                  <button onClick={() => { db.removeTransaction(t); showToast('Запись удалена — внеси заново, если нужно'); }} title="Удалить (ошиблась)" style={{
-                    border: 'none', background: UI.soft, borderRadius: 999, padding: '5px 10px', fontSize: 12, color: UI.muted, cursor: 'pointer',
-                  }}>✕</button>
+                  <>
+                    <button onClick={() => { db.moveTxToYesterday(t); showToast('Перенесена во вчера ↩'); }} title="Эта оплата была вчера — перенести" style={{
+                      border: 'none', background: UI.soft, borderRadius: 999, padding: '5px 12px', fontSize: 12, fontWeight: 700,
+                    }}>↩ во вчера</button>
+                    <button onClick={() => { db.removeTransaction(t); showToast('Запись удалена — внеси заново, если нужно'); }} title="Удалить (ошиблась)" style={{
+                      border: 'none', background: UI.soft, borderRadius: 999, padding: '5px 10px', fontSize: 12, color: UI.muted, cursor: 'pointer',
+                    }}>✕</button>
+                  </>
+                )}
+                {t.log?.length > 0 && (
+                  <span title={t.log.map(l => `${l.who}: ${l.action} (${l.time})`).join('\n')} style={{ color: UI.muted, display: 'inline-flex' }}>
+                    <I n="clock" size={12} />
+                  </span>
                 )}
               </div>
             ))}
@@ -398,16 +408,32 @@ function OwnerView(props) {
   const [txQuery, setTxQuery] = useState('');
   const [txType, setTxType] = useState(''); // '' | income | expense
   const [txMethod, setTxMethod] = useState(''); // фильтр по способу оплаты
-  // Правка операции (ошиблись в сумме/комментарии)
-  const [txEditId, setTxEditId] = useState(null);
-  const [txEditSum, setTxEditSum] = useState('');
-  const [txEditComment, setTxEditComment] = useState('');
+  // Правка операции: дата, категория, сумма, способ, комментарий — модалкой, с историей
+  const [editTx, setEditTx] = useState(null);
+  const [eDate, setEDate] = useState('');
+  const [eCat, setECat] = useState('');
+  const [eSum, setESum] = useState('');
+  const [eMethod, setEMethod] = useState('cash');
+  const [eBank, setEBank] = useState('');
+  const [eComment, setEComment] = useState('');
+  const [historyTxId, setHistoryTxId] = useState(null); // раскрытая история записи
 
-  const saveTxEdit = (t) => {
-    if (!+txEditSum) { showToast('Сумма должна быть больше нуля', 'error'); return; }
-    db.updateTransaction(t, { amount: +txEditSum, comment: txEditComment.trim() });
-    setTxEditId(null);
-    showToast('Операция исправлена ✓');
+  const openTxEdit = (t) => {
+    setEditTx(t);
+    setEDate(t.op_date); setECat(t.category_id ? String(t.category_id) : ''); setESum(String(t.amount));
+    setEMethod(t.payment_method); setEBank(t.bank_id ? String(t.bank_id) : ''); setEComment(t.comment || '');
+  };
+
+  const saveTxEdit = async () => {
+    if (!+eSum) { showToast('Сумма должна быть больше нуля', 'error'); return; }
+    const ok = await db.updateTransaction(editTx, {
+      op_date: eDate, category_id: eCat ? +eCat : null, amount: +eSum,
+      payment_method: eMethod, bank_id: eMethod === 'transfer' ? +eBank || null : null,
+      comment: eComment.trim(),
+    });
+    if (!ok) return;
+    setEditTx(null);
+    showToast('Операция исправлена ✓ (записано в историю)');
   };
 
   const shiftDay = (dir) => {
@@ -562,23 +588,26 @@ function OwnerView(props) {
                   border: 'none', background: UI.soft, borderRadius: 999, padding: '5px 12px', fontSize: 12, fontWeight: 700,
                 }}>↪ на сегодня</button>
               )}
-              <button onClick={() => { setTxEditId(t.id); setTxEditSum(String(t.amount)); setTxEditComment(t.comment || ''); }} title="Исправить" style={{
+              {t.log?.length > 0 && (
+                <button onClick={() => setHistoryTxId(v => v === t.id ? null : t.id)} title="История записи" style={{
+                  border: 'none', background: historyTxId === t.id ? UI.dark : UI.soft, color: historyTxId === t.id ? '#fff' : UI.dark,
+                  borderRadius: 999, padding: '4px 9px', fontSize: 11.5, cursor: 'pointer',
+                }}><I n="clock" size={11} /></button>
+              )}
+              <button onClick={() => openTxEdit(t)} title="Исправить (дата, сумма, категория…)" style={{
                 border: 'none', background: UI.soft, borderRadius: 999, padding: '4px 9px', fontSize: 11.5, cursor: 'pointer',
               }}><I n="pencil" size={11} /></button>
               <button onClick={() => { db.removeTransaction(t); showToast('Операция удалена'); }} title="Удалить" style={{
                 border: 'none', background: UI.soft, borderRadius: 999, padding: '4px 9px', fontSize: 11.5, color: UI.muted, cursor: 'pointer',
               }}>✕</button>
-              {txEditId === t.id && (
-                <span style={{ display: 'flex', gap: 6, width: '100%', marginTop: 6 }} onClick={e => e.stopPropagation()}>
-                  <input type="number" value={txEditSum} onChange={e => setTxEditSum(e.target.value)} placeholder="Сумма" style={{
-                    width: 110, padding: '8px 12px', borderRadius: 12, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 13, fontWeight: 700, outline: 'none',
-                  }} />
-                  <input value={txEditComment} onChange={e => setTxEditComment(e.target.value)} placeholder="Комментарий" style={{
-                    flex: 1, minWidth: 0, padding: '8px 12px', borderRadius: 12, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 13, outline: 'none',
-                  }} />
-                  <button onClick={() => saveTxEdit(t)} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '0 14px', fontWeight: 800, fontSize: 12.5 }}>ОК</button>
-                  <button onClick={() => setTxEditId(null)} style={{ border: 'none', background: UI.soft, borderRadius: 999, padding: '0 10px', fontSize: 12.5 }}>✕</button>
-                </span>
+              {historyTxId === t.id && t.log?.length > 0 && (
+                <div style={{ width: '100%', background: UI.soft, borderRadius: 12, padding: '6px 12px', marginTop: 6, fontSize: 12.5 }}>
+                  {t.log.map((l, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 8, padding: '3px 0' }}>
+                      <b>{l.who}</b><span>{l.action}</span><span style={{ marginLeft: 'auto', color: UI.muted }}>{l.time}</span>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           ))}
@@ -669,6 +698,58 @@ function OwnerView(props) {
         </div>
 
       </div>
+
+      {/* Модалка правки операции */}
+      {editTx && (
+        <div onClick={() => setEditTx(null)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(29,29,31,.45)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20,
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 26, padding: 26, width: 'min(420px, 100%)', display: 'flex', flexDirection: 'column', gap: 11 }}>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <span style={{ fontWeight: 800, fontSize: 17 }}>Правка операции</span>
+              <button onClick={() => setEditTx(null)} style={{ marginLeft: 'auto', border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 15 }}>✕</button>
+            </div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.muted, textTransform: 'uppercase', letterSpacing: 0.4, margin: '0 0 -6px 6px' }}>Дата операции</div>
+            <input type="date" max={db.today} value={eDate} onChange={e => setEDate(e.target.value)} style={{
+              width: '100%', padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 14, outline: 'none',
+            }} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <select value={eCat} onChange={e => setECat(e.target.value)} style={{
+                flex: 1.4, minWidth: 0, padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 14, outline: 'none',
+              }}>
+                <option value="">Категория…</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <input type="number" value={eSum} onChange={e => setESum(e.target.value)} placeholder="Сумма" style={{
+                flex: 1, minWidth: 0, padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 15, fontWeight: 700, outline: 'none',
+              }} />
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {PAYMENT_METHODS.filter(m => m.key !== 'deposit' || eMethod === 'deposit').map(m => (
+                <button key={m.key} onClick={() => setEMethod(m.key)} style={{
+                  border: 'none', borderRadius: 999, padding: '8px 14px', fontSize: 12.5, fontWeight: 600,
+                  background: eMethod === m.key ? UI.accent : UI.soft,
+                }}>{m.label}</button>
+              ))}
+            </div>
+            {eMethod === 'transfer' && (
+              <select value={eBank} onChange={e => setEBank(e.target.value)} style={{
+                width: '100%', padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 14, outline: 'none',
+              }}>
+                <option value="">На какую карту (банк)…</option>
+                {banks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            )}
+            <input value={eComment} onChange={e => setEComment(e.target.value)} placeholder="Комментарий" style={{
+              width: '100%', padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 14, outline: 'none',
+            }} />
+            <button onClick={saveTxEdit} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '14px 0', fontWeight: 800, fontSize: 14 }}>
+              Сохранить (в историю запишется, что изменилось)
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Модалка «+ Операция» — та же форма, но со всеми категориями владельца */}
       {showAddOp && (

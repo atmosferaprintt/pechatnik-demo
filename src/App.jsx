@@ -292,6 +292,7 @@ export default function App() {
         loadAllRows('manual_debts'), loadAllRows('manual_debt_entries'),
         loadAllRows('supply_items'), loadAllRows('day_closures'), loadAllRows('transactions'),
       ]);
+      const txLogs = await loadAllRows('transaction_log');
       const { data: qo } = await supabase.from('app_settings').select('value').eq('key', 'quick_ops').maybeSingle();
       setQuickOps(Array.isArray(qo?.value) ? qo.value : []);
 
@@ -323,6 +324,7 @@ export default function App() {
       setDayClosures(dc.map(c => ({ date: c.close_date, cash_fact: +c.cash_fact, cash_calc: +c.cash_calc, diff: +c.diff, closed_by: nameOf(c.closed_by) })));
       setTransactions(tx.map(t => ({
         ...t, amount: +t.amount, created_by_id: t.created_by, created_by: nameOf(t.created_by), time: hhmm(t.created_at),
+        log: txLogs.filter(l => l.transaction_id === t.id).map(l => ({ who: l.who, action: l.action, time: logT(l.created_at) })),
       })));
     } catch (e) {
       console.error(e);
@@ -396,12 +398,11 @@ export default function App() {
     },
 
     async moveTxToToday(t) {
-      if (!DEMO) {
-        const { error } = await supabase.from('transactions').update({ op_date: db.today, moved_from: t.op_date }).eq('id', t.id);
-        if (error) return fail(error);
-      }
-      setTransactions(prev => prev.map(x => x.id === t.id ? { ...x, op_date: db.today, moved_from: t.op_date } : x));
-      return true;
+      return db.updateTransaction(t, { op_date: db.today, moved_from: t.op_date });
+    },
+
+    async moveTxToYesterday(t) {
+      return db.updateTransaction(t, { op_date: db.yesterday, moved_from: null });
     },
 
     async closeShift({ date, cash_calc, cash_fact, diff }) {
@@ -508,11 +509,25 @@ export default function App() {
     },
 
     async updateTransaction(t, patch) {
+      // Дифф для истории: кто и что поменял
+      const dd = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
+      const catN = (id) => categories.find(c => c.id === id)?.name || '—';
+      const mL = (k) => PAYMENT_METHODS.find(m => m.key === k)?.label || k;
+      const diffs = [];
+      if ('op_date' in patch && patch.op_date !== t.op_date) diffs.push(`дата ${dd(t.op_date)} → ${dd(patch.op_date)}`);
+      if ('amount' in patch && +patch.amount !== +t.amount) diffs.push(`сумма ${t.amount} → ${patch.amount} ₽`);
+      if ('category_id' in patch && patch.category_id !== t.category_id) diffs.push(`категория ${catN(t.category_id)} → ${catN(patch.category_id)}`);
+      if ('payment_method' in patch && patch.payment_method !== t.payment_method) diffs.push(`способ ${mL(t.payment_method)} → ${mL(patch.payment_method)}`);
+      if ('comment' in patch && (patch.comment || '') !== (t.comment || '')) diffs.push('комментарий');
+      const action = diffs.length ? `исправила: ${diffs.join(', ')}` : 'исправила запись';
+      const logEntry = { who: currentUser.name, action, time: logTimeNow() };
+
       if (!DEMO) {
         const { error } = await supabase.from('transactions').update(patch).eq('id', t.id);
         if (error) return fail(error);
+        await supabase.from('transaction_log').insert({ transaction_id: t.id, who: logEntry.who, action: logEntry.action });
       }
-      setTransactions(prev => prev.map(x => x.id === t.id ? { ...x, ...patch } : x));
+      setTransactions(prev => prev.map(x => x.id === t.id ? { ...x, ...patch, log: [...(x.log || []), logEntry] } : x));
       return true;
     },
 

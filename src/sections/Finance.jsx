@@ -218,7 +218,8 @@ function EmployeeView(props) {
   // Девочкам видна операционка дня (без личных и крупных расходов Кристи)
   const dayTx = transactions.filter(t => t.op_date === opDate
     && catKind(t) !== 'expense_personal'
-    && !(t.type === 'expense' && catKind(t) === 'expense_work'));
+    && !(t.type === 'expense' && catKind(t) === 'expense_work'))
+    .sort((a, b) => (b.time || '').localeCompare(a.time || '') || b.id - a.id); // новые сверху
   // Переходящий остаток: сколько лежало в кассе на утро (фактический остаток последнего закрытия)
   const carry = dayClosures.filter(c => c.date < opDate).sort((a, b) => (a.date < b.date ? 1 : -1))[0]?.cash_fact || 0;
   const dayCashFlow = dayTx.reduce((s, t) => s + (t.payment_method === 'cash' ? (t.type === 'income' ? t.amount : -t.amount) : 0), 0);
@@ -463,7 +464,8 @@ function OwnerView(props) {
   const isPersonal = (t) => catKind(t) === 'expense_personal';
   const isBigWork = (t) => t.type === 'expense' && catKind(t) === 'expense_work';
 
-  const dailyTx = dayTx.filter(t => !isPersonal(t) && !isBigWork(t)); // лента дня: доходы + операционка
+  const dailyTx = dayTx.filter(t => !isPersonal(t) && !isBigWork(t))
+    .sort((a, b) => (b.time || '').localeCompare(a.time || '') || b.id - a.id); // лента дня, новые сверху
   const bigTx = dayTx.filter(isBigWork);
   const bigTotal = bigTx.reduce((s, t) => s + t.amount, 0);
   const personalTx = dayTx.filter(isPersonal);

@@ -1,6 +1,7 @@
-// Раздел «Задачи» — канбан ПО ЭТАПАМ (Новая → В работе → Производство → Готово, вернули 2026-07-16)
+// Раздел «Задачи» — канбан ПО ЭТАПАМ (Новая → В работе → Производство → Готово)
 // + фильтр по людям сверху: сотрудница по умолчанию видит свои задачи.
-// Редактировать (этап, передача, отметки, завершение) можно ТОЛЬКО свои; чужие — просмотр. Владелец — всё.
+// Редактировать могут ВСЕ (решение Кристи 2026-07-17), каждая правка — в истории task_log
+// с диффом «кто что менял». Удаление — только владелец.
 // Задачи видны всем и передаются от человека к человеку; действия отмечаются бейджами с историей.
 // Клик по карточке → подробности: клиент, оплата, сроки, состав заказа, история действий.
 // Заглушка на демо-данных.
@@ -51,8 +52,9 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
   // Фильтр по людям: сотрудница сначала видит свои, Кристи — всех
   const [personFlt, setPersonFlt] = useState(isOwner ? '' : currentUser.name);
 
-  // Редактировать можно только свои задачи (чужие — только смотреть). Владелец — всё.
-  const canEdit = (t) => isOwner || t.assignee === currentUser.name;
+  // Решение Кристи 2026-07-17: редактировать могут ВСЕ (страховка — история «кто что менял»).
+  // Удаление — только владелец.
+  const canEdit = () => true;
   const [showPayForm, setShowPayForm] = useState(false);
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState('cash');
@@ -174,8 +176,18 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
     };
 
     if (editTask) {
-      // Правка существующей задачи — НЕ создание новой
-      const ok = await db.updateTask(editTask, payload, { who: currentUser.name, action: 'изменила задачу' });
+      // Правка существующей задачи — НЕ создание новой. В историю пишем, ЧТО изменилось.
+      const diffs = [];
+      if (payload.title !== editTask.title) diffs.push(`название «${editTask.title}» → «${payload.title}»`);
+      if ((payload.amount || 0) !== (editTask.amount || 0)) diffs.push(`сумма ${editTask.amount || 0} → ${payload.amount || 0} ₽`);
+      if ((payload.deadline || '') !== (editTask.deadline || '')) diffs.push(`дедлайн → ${payload.deadline ? dm(payload.deadline) : 'убран'}`);
+      if ((payload.client_id || null) !== (editTask.client_id || null)) diffs.push('клиент');
+      if ((payload.contractor_id || null) !== (editTask.contractor_id || null)) diffs.push('контрагент');
+      if ((payload.assignee || '') !== (editTask.assignee || '')) diffs.push(`задачник → ${payload.assignee}`);
+      if ((payload.description || '') !== (editTask.description || '')) diffs.push('описание');
+      if (JSON.stringify(payload.parts) !== JSON.stringify(editTask.parts || [])) diffs.push('состав заказа');
+      const action = diffs.length ? `изменила: ${diffs.join(', ')}` : 'изменила задачу';
+      const ok = await db.updateTask(editTask, payload, { who: currentUser.name, action });
       if (!ok) return;
       showToast('Задача исправлена ✓');
     } else {
@@ -411,7 +423,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
 
               {inCol.map(t => {
                 const lastAction = t.log?.length ? t.log[t.log.length - 1] : null;
-                const mine = canEdit(t);
+                const mine = t.assignee === currentUser.name;
                 return (
                   // Компактная карточка; чужие — только просмотр (без кнопок)
                   <div key={t.id} onClick={() => { setOpenTask(t); setShowPayForm(false); }} style={{

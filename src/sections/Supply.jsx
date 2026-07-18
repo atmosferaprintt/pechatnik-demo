@@ -3,9 +3,10 @@
 // Заглушка на демо-данных.
 import { useState } from 'react';
 import I from '../Icon.jsx';
+import { localDate } from '../dates.js';
 
 const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
-const TODAY = new Date().toISOString().slice(0, 10);
+const TODAY = localDate();
 
 export default function Supply({ supply, db, UI, showToast }) {
   const [text, setText] = useState('');

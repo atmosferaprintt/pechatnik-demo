@@ -4,10 +4,11 @@
 // Заглушка на демо-данных.
 import { useState } from 'react';
 import I from '../Icon.jsx';
+import { localDate } from '../dates.js';
 
 const fmt = (n) => (n || 0).toLocaleString('ru-RU');
 const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
-const TODAY = new Date().toISOString().slice(0, 10);
+const TODAY = localDate();
 const FIN_DAY = '2026-07-14'; // демо-день финансов
 
 export default function Deposits({ deposits, tasks, manualDebts, db, UI, showToast }) {

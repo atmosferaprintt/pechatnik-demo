@@ -2,10 +2,11 @@
 // Выручка/расходы сегодня, долги по задачам, расхождения сверки, горящие дедлайны, незакрытые дни.
 // Заглушка на демо-данных.
 import I from '../Icon.jsx';
+import { localDate } from '../dates.js';
 const fmt = (n) => (n || 0).toLocaleString('ru-RU');
 const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
-const TODAY = new Date().toISOString().slice(0, 10);
-const TOMORROW = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+const TODAY = localDate();
+const TOMORROW = localDate(new Date(Date.now() + 86400000));
 
 export default function Dashboard(props) {
   return props.isOwner ? <OwnerDash {...props} /> : <EmployeeDash {...props} />;

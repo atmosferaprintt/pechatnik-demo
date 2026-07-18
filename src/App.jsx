@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import useIsMobile from './mobile/useIsMobile.js';
 import I from './Icon.jsx';
+import { localDate, localHM } from './dates.js';
 
 import Dashboard from './sections/Dashboard.jsx';
 import Tasks from './sections/Tasks.jsx';
@@ -24,7 +25,8 @@ const DEMO = !supabase;
 // ---------- Константы ----------
 export const ROLES = { owner: 'Владелец', employee: 'Сотрудник' };
 
-export const STAGES = ['Новая', 'В работе', 'Производство', 'Готово'];
+// «Производство» убрано 2026-07-18 по просьбе Кристи — этапов три
+export const STAGES = ['Новая', 'В работе', 'Готово'];
 
 // Канбан задач — по людям (просьба Кристи 2026-07-14): у каждого свой задачник.
 // Задачи видны всем и передаются от человека к человеку.
@@ -91,10 +93,10 @@ const DEMO_TASKS = [
   { id: 1, title: 'Визитки 500 шт', client_id: 4, stage: 'Новая', amount: 2500, deadline: '2026-07-15', assignee: 'Влада', created_at: '2026-07-13', description: 'Двусторонние, глянец 300 г. Макет пришлёт в WhatsApp.', log: [{ who: 'Влада', action: 'приняла', time: '13.07 16:20' }] },
   { id: 2, title: 'Баннер 3×6 «Автосервис»', client_id: 4, stage: 'В работе', amount: 7200, deadline: '2026-07-16', assignee: 'Настя', created_at: '2026-07-12', description: 'Баннерная ткань, люверсы по периметру через 50 см. Монтаж не наш.', parts: [{ name: 'Печать', amount: 5200 }, { name: 'Дизайн', amount: 2000 }], contractor_id: 1, log: [{ who: 'Настя', action: 'приняла', time: '12.07 11:00' }, { who: 'Настя', action: 'отдала контрагенту', time: '13.07 10:15' }] },
   { id: 3, title: 'Бирки атлас 200 шт', client_id: 1, stage: 'В работе', amount: 3400, deadline: '2026-07-14', assignee: 'Алена', created_at: '2026-07-12', description: 'Атласная лента 25 мм, логотип золотом, как в прошлый раз.', log: [{ who: 'Алена', action: 'приняла', time: '12.07 12:40' }, { who: 'Алена', action: 'подготовила к печати', time: '14.07 09:30' }] },
-  { id: 4, title: 'Меню А4 ламинация ×20', client_id: 2, stage: 'Производство', amount: 4800, deadline: '2026-07-15', assignee: 'Людмила', created_at: '2026-07-11', description: 'Двусторонняя печать + матовая ламинация. Макет утверждён.', log: [{ who: 'Настя', action: 'приняла', time: '11.07 10:05' }, { who: 'Настя', action: 'подготовила', time: '11.07 15:00' }, { who: 'Настя', action: 'распечатала', time: '12.07 13:20' }, { who: 'Настя', action: '→ передала Людмиле · постпечатка', time: '12.07 13:25' }] },
-  { id: 5, title: 'Кружки с фото ×3', client_id: 3, stage: 'Производство', amount: 1950, deadline: '2026-07-17', assignee: 'Кристи', created_at: '2026-07-13', description: 'Фото прислала в директ, белые кружки 330 мл.', log: [{ who: 'Кристи', action: 'приняла', time: '13.07 14:00' }] },
+  { id: 4, title: 'Меню А4 ламинация ×20', client_id: 2, stage: 'В работе', amount: 4800, deadline: '2026-07-15', assignee: 'Людмила', created_at: '2026-07-11', description: 'Двусторонняя печать + матовая ламинация. Макет утверждён.', log: [{ who: 'Настя', action: 'приняла', time: '11.07 10:05' }, { who: 'Настя', action: 'подготовила', time: '11.07 15:00' }, { who: 'Настя', action: 'распечатала', time: '12.07 13:20' }, { who: 'Настя', action: '→ передала Людмиле · постпечатка', time: '12.07 13:25' }] },
+  { id: 5, title: 'Кружки с фото ×3', client_id: 3, stage: 'В работе', amount: 1950, deadline: '2026-07-17', assignee: 'Кристи', created_at: '2026-07-13', description: 'Фото прислала в директ, белые кружки 330 мл.', log: [{ who: 'Кристи', action: 'приняла', time: '13.07 14:00' }] },
   { id: 6, title: 'Наклейки на банки 300 шт', client_id: 2, stage: 'Готово', amount: 5100, deadline: '2026-07-13', assignee: 'Настя', created_at: '2026-07-10', description: 'Круглые 60 мм, влагостойкая плёнка. Забирают сами.', parts: [{ name: 'Печать', amount: 3600 }, { name: 'Дизайн', amount: 1500 }], log: [{ who: 'Настя', action: 'приняла', time: '10.07 12:00' }, { who: 'Настя', action: 'распечатала', time: '12.07 16:40' }, { who: 'Настя', action: 'готово к выдаче', time: '13.07 10:00' }] },
-  { id: 7, title: 'Бейджи 30 шт', client_id: 1, stage: 'Производство', amount: 2100, deadline: '2026-07-16', assignee: 'Марьян', created_at: '2026-07-14', description: 'Бейджи с окошком, вставки печатаем.', log: [{ who: 'Алена', action: 'приняла', time: '14.07 09:10' }, { who: 'Алена', action: 'подготовила к печати', time: '14.07 11:30' }, { who: 'Алена', action: '→ передала Марьян · изготовление', time: '14.07 11:35' }] },
+  { id: 7, title: 'Бейджи 30 шт', client_id: 1, stage: 'В работе', amount: 2100, deadline: '2026-07-16', assignee: 'Марьян', created_at: '2026-07-14', description: 'Бейджи с окошком, вставки печатаем.', log: [{ who: 'Алена', action: 'приняла', time: '14.07 09:10' }, { who: 'Алена', action: 'подготовила к печати', time: '14.07 11:30' }, { who: 'Алена', action: '→ передала Марьян · изготовление', time: '14.07 11:35' }] },
   // Завершённые: с долгом — висят в разделе «Долги», оплаченные — в «Завершённых»
   { id: 8, title: 'Календари А3 ×50', client_id: 4, stage: 'Готово', amount: 6000, deadline: '2026-07-10', assignee: 'Влада', created_at: '2026-07-05', description: 'Выдали 10.07, обещал перевести.', done: true, log: [{ who: 'Влада', action: 'приняла', time: '05.07 10:00' }, { who: 'Влада', action: '✓ завершила · выдано клиенту', time: '10.07 15:20' }] },
   { id: 9, title: 'Листовки А6 1000 шт', client_id: 3, stage: 'Готово', amount: 3800, deadline: '2026-07-08', assignee: 'Алена', created_at: '2026-07-03', description: '', done: true, log: [{ who: 'Алена', action: '✓ завершила', time: '08.07 12:00' }] },
@@ -204,9 +206,9 @@ const DEMO_BANK_ROWS = [
   { id: 3, amount: 2400, matched: false, description: 'СБП Сбер 15:37 — ??? не записано' },
 ];
 
-// Реальные «сегодня/вчера» считаются один раз при загрузке приложения
-const REAL_TODAY = new Date().toISOString().slice(0, 10);
-const REAL_YESTERDAY = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+// Реальные «сегодня/вчера» считаются один раз при загрузке приложения — по МЕСТНОМУ времени
+const REAL_TODAY = localDate();
+const REAL_YESTERDAY = localDate(new Date(Date.now() - 864e5));
 
 // Supabase отдаёт максимум 1000 строк — всегда тянем страницами.
 async function loadAllRows(table, columns = '*', pageSize = 1000, filter = null) {
@@ -301,9 +303,11 @@ export default function App() {
       const { data: qo } = await supabase.from('app_settings').select('value').eq('key', 'quick_ops').maybeSingle();
       setQuickOps(Array.isArray(qo?.value) ? qo.value : []);
 
-      const hhmm = (t) => (t || '').slice(11, 16);
-      const dOnly = (t) => (t || '').slice(0, 10);
-      const logT = (t) => `${t.slice(8, 10)}.${t.slice(5, 7)} ${hhmm(t)}`;
+      // created_at приходит из Postgres в UTC — показываем в МЕСТНОМ времени
+      // (жалоба Кристи 2026-07-18: «время сбитое» — записи утра показывались как 07:xx)
+      const hhmm = localHM;
+      const dOnly = (t) => t ? localDate(t) : '';
+      const logT = (t) => { const d = new Date(t); return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')} ${localHM(t)}`; };
 
       setUsers(profs);
       setCurrentUser(profs.find(u => u.id === session.user.id) || null);
@@ -398,7 +402,7 @@ export default function App() {
         const rows = recs.map(({ ...r }) => ({ op_date: db.today, ...r, created_by: currentUser.id }));
         const { data, error } = await supabase.from('transactions').insert(rows).select();
         if (error) throw error;
-        setTransactions(prev => [...prev, ...data.map(t => ({ ...t, amount: +t.amount, created_by_id: t.created_by, created_by: currentUser.name, time: (t.created_at || '').slice(11, 16) }))]);
+        setTransactions(prev => [...prev, ...data.map(t => ({ ...t, amount: +t.amount, created_by_id: t.created_by, created_by: currentUser.name, time: localHM(t.created_at) }))]);
         return true;
       } catch (e) { return fail(e); }
     },
@@ -432,7 +436,7 @@ export default function App() {
         const { data, error } = await supabase.from('tasks').insert({ ...clean, created_by: currentUser.id }).select().single();
         if (error) throw error;
         await supabase.from('task_log').insert({ task_id: data.id, who: log0.who, action: log0.action });
-        const task = { ...data, amount: data.amount == null ? null : +data.amount, parts: data.parts || [], created_at: (data.created_at || '').slice(0, 10), log: [log0] };
+        const task = { ...data, amount: data.amount == null ? null : +data.amount, parts: data.parts || [], created_at: data.created_at ? localDate(data.created_at) : '', log: [log0] };
         setTasks(prev => [...prev, task]);
         return task;
       } catch (e) { return fail(e); }
@@ -637,7 +641,7 @@ export default function App() {
       try {
         const { data, error } = await supabase.from('deposits').insert({ name, total, created_by: currentUser.id }).select().single();
         if (error) throw error;
-        setDeposits(prev => [...prev, { ...data, total: +data.total, created_at: (data.created_at || '').slice(0, 10), uses: [] }]);
+        setDeposits(prev => [...prev, { ...data, total: +data.total, created_at: data.created_at ? localDate(data.created_at) : '', uses: [] }]);
         return true;
       } catch (e) { return fail(e); }
     },
@@ -725,7 +729,7 @@ export default function App() {
       try {
         const { data, error } = await supabase.from('supply_items').insert({ text, created_by: currentUser.id }).select().single();
         if (error) throw error;
-        setSupply(prev => [...prev, { id: data.id, text: data.text, bought: data.bought, author: currentUser.name, date: (data.created_at || '').slice(0, 10) }]);
+        setSupply(prev => [...prev, { id: data.id, text: data.text, bought: data.bought, author: currentUser.name, date: data.created_at ? localDate(data.created_at) : '' }]);
         return true;
       } catch (e) { return fail(e); }
     },

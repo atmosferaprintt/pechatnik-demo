@@ -596,6 +596,9 @@ function OwnerView(props) {
   // Журнал изменений кассы: все правки и удаления операций — кто, когда, что (просьба Кристи 2026-07-17)
   const [showJournal, setShowJournal] = useState(false);
   const [journalWho, setJournalWho] = useState('');
+  // Закрытие дня из «Сверки» (раньше поле и кнопка были мёртвой заглушкой — жалоба «нет графы сдано» 2026-07-18)
+  const [oFact, setOFact] = useState('');
+  const [oTaken, setOTaken] = useState('');
 
   const openTxEdit = (t) => {
     setEditTx(t);
@@ -669,6 +672,17 @@ function OwnerView(props) {
   const unmatched = dayBankRows.filter(r => !r.matched);
 
   const shiftClosure = dayClosures.find(c => c.date === opDate);
+
+  const closeDay = () => {
+    if (oFact === '') { showToast('Введи фактический остаток в кассе', 'error'); return; }
+    const taken = +oTaken || 0;
+    if (taken > +oFact) { showToast('Сдано больше, чем есть в кассе — проверь цифры', 'error'); return; }
+    const cashCalc = carry + cashIn - cashOut;
+    const diffC = +oFact - cashCalc;
+    db.closeShift({ date: opDate, cash_calc: cashCalc, cash_fact: +oFact, cash_taken: taken, diff: diffC });
+    setOFact(''); setOTaken('');
+    showToast(diffC === 0 ? 'День закрыт, касса сошлась ✓' : `День закрыт, разница ${diffC > 0 ? '+' : ''}${fmt(diffC)} ₽`, diffC === 0 ? 'ok' : 'error');
+  };
 
   // Вчерашняя оплата нашлась после закрытия смены → перенос на сегодня
   const moveToToday = (t) => {
@@ -937,14 +951,27 @@ function OwnerView(props) {
               <I n="alert" size={12} /> <b>{fmt(r.amount)} ₽</b> · {r.description}
             </div>
           ))}
-          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-            <input placeholder="Остаток в кассе, ₽" style={{
-              flex: 1, padding: '12px 16px', borderRadius: 999, border: 'none', outline: 'none', fontSize: 14, background: 'rgba(255,255,255,.12)', color: '#fff', minWidth: 0,
-            }} />
-            <button style={{ border: 'none', background: UI.accent, color: UI.dark, borderRadius: 999, padding: '12px 20px', fontWeight: 800, fontSize: 14 }}>
-              Закрыть день
-            </button>
-          </div>
+          {!shiftClosure && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <input type="number" value={oFact} onChange={e => setOFact(e.target.value)} placeholder="В кассе по факту, ₽" style={{
+                  flex: 1, padding: '12px 16px', borderRadius: 999, border: 'none', outline: 'none', fontSize: 14, background: 'rgba(255,255,255,.12)', color: '#fff', minWidth: 0,
+                }} />
+                <input type="number" value={oTaken} onChange={e => setOTaken(e.target.value)} placeholder="Сдано, ₽" title="Сколько налички забрали из кассы" style={{
+                  flex: 1, padding: '12px 16px', borderRadius: 999, border: 'none', outline: 'none', fontSize: 14, background: 'rgba(255,255,255,.12)', color: '#fff', minWidth: 0,
+                }} />
+              </div>
+              {oFact !== '' && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '8px 4px 0', opacity: .85 }}>
+                  <span>Останется в кассе на утро</span>
+                  <span style={{ fontWeight: 800 }}>{fmt(+oFact - (+oTaken || 0))} ₽</span>
+                </div>
+              )}
+              <button onClick={closeDay} style={{ border: 'none', background: UI.accent, color: UI.dark, borderRadius: 999, padding: '12px 20px', fontWeight: 800, fontSize: 14, width: '100%', marginTop: 10 }}>
+                Закрыть день
+              </button>
+            </div>
+          )}
         </div>
 
       </div>

@@ -1,4 +1,4 @@
-// Раздел «Задачи» — канбан ПО ЭТАПАМ (Новая → В работе → Производство → Готово)
+// Раздел «Задачи» — канбан ПО ЭТАПАМ (Новая → В работе → Готово)
 // + фильтр по людям сверху: сотрудница по умолчанию видит свои задачи.
 // Редактировать могут ВСЕ (решение Кристи 2026-07-17), каждая правка — в истории task_log
 // с диффом «кто что менял». Удаление — только владелец.
@@ -7,12 +7,13 @@
 // Заглушка на демо-данных.
 import { Fragment, useState } from 'react';
 import I from '../Icon.jsx';
+import { localDate } from '../dates.js';
 
 const fmt = (n) => (n || 0).toLocaleString('ru-RU') + ' ₽';
 const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
 
-const TODAY = new Date().toISOString().slice(0, 10);
-const TOMORROW = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+const TODAY = localDate();
+const TOMORROW = localDate(new Date(Date.now() + 86400000));
 const NOW = () => `${dm(TODAY)} ${new Date().toTimeString().slice(0, 5)}`;
 
 // Быстрые отметки действий на задаче

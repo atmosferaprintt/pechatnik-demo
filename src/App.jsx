@@ -14,6 +14,7 @@ import Contractors from './sections/Contractors.jsx';
 import Deposits from './sections/Deposits.jsx';
 import Supply from './sections/Supply.jsx';
 import Finance from './sections/Finance.jsx';
+import Notes from './sections/Notes.jsx';
 import Analytics from './sections/Analytics.jsx';
 import Settings from './sections/Settings.jsx';
 
@@ -63,6 +64,7 @@ const TABS = [
   { key: 'contractors', label: 'Контрагенты', roles: ['owner', 'employee'] },
   { key: 'deposits', label: 'Депозиты и долги', roles: ['owner', 'employee'] },
   { key: 'supply', label: 'Поставка', roles: ['owner', 'employee'] },
+  { key: 'notes', label: 'Заметки', roles: ['owner', 'employee'] },
   { key: 'finance', label: 'Финансы', roles: ['owner', 'employee'] },
   { key: 'analytics', label: 'Аналитика', roles: ['owner'] },
   { key: 'settings', label: 'Настройки', roles: ['owner'] },
@@ -119,6 +121,13 @@ const DEMO_SUPPLY = [
   { id: 1, text: 'Сувенирка: металл под сублимацию заканчивается', author: 'Алена', date: '2026-07-14', bought: false },
   { id: 2, text: 'Бумага А4 — осталось 2 пачки', author: 'Настя', date: '2026-07-13', bought: false },
   { id: 3, text: 'Атласная лента 25 мм белая', author: 'Влада', date: '2026-07-12', bought: true },
+];
+
+// Рабочие заметки-шпаргалки: настройки оборудования и приёмы (идея Кристи 2026-07-19)
+const DEMO_NOTES = [
+  { id: 1, title: 'Фольгирование на софт-тач ламинации', pinned: true, author: 'Кристи', updated_by: 'Кристи', date: '2026-07-19', updated_at: '2026-07-19T09:00:00', body: 'Чтобы фольга легла без брака:\n\n1. Ламинируем софт-тач как обычно\n2. Температура фольгиратора — 110°, скорость — 3\n3. Прогон делаем ДВА раза\n4. Фольгу класть матовой стороной вверх\n\nЕсли пузырит — снизить температуру до 105° и прогнать медленнее.' },
+  { id: 2, title: 'Полосит плашка сложного цвета в тираже', pinned: true, author: 'Кристи', updated_by: 'Кристи', date: '2026-07-19', updated_at: '2026-07-19T09:05:00', body: 'Когда плашка смешным цветом (оттенки розово-серого и т.п.) — первый лист хороший, дальше идут полосы.\n\nВ Versant: Настройки → Качество изображения → включить «Обновление фотобарабана» перед тиражом.\n\nПосле тиража выключить обратно.' },
+  { id: 3, title: 'Визитки: размеры и вылеты', pinned: false, author: 'Алена', updated_by: 'Алена', date: '2026-07-16', updated_at: '2026-07-16T12:00:00', body: 'Обрезной 90×50, макет делаем 94×54 (вылеты по 2 мм с каждой стороны).\nТексты и логотипы — не ближе 5 мм к краю.' },
 ];
 
 // Депозиты — бюджетники вносят сумму и расходуют частями
@@ -245,6 +254,7 @@ export default function App() {
   const [deposits, setDeposits] = useState(DEMO ? DEMO_DEPOSITS : []);
   const [manualDebts, setManualDebts] = useState(DEMO ? DEMO_MANUAL_DEBTS : []);
   const [supply, setSupply] = useState(DEMO ? DEMO_SUPPLY : []);
+  const [notes, setNotes] = useState(DEMO ? DEMO_NOTES : []);
   // Закрытия смен: девочки закрывают смену сами (просьба Кристи 2026-07-16)
   const [dayClosures, setDayClosures] = useState([]);
   // Кнопки «мелочь одним тапом» — настраивает Кристи в Настройках (app_settings.quick_ops)
@@ -291,13 +301,14 @@ export default function App() {
       profs.sort((a, b) => (a.role === 'owner') - (b.role === 'owner') || a.sort - b.sort);
       const nameOf = (id) => profs.find(u => u.id === id)?.name || '—';
 
-      const [cl, ts, logs, cat, bk, ctr, ctrT, dep, depU, md, mdE, sup, dc, tx] = await Promise.all([
+      const [cl, ts, logs, cat, bk, ctr, ctrT, dep, depU, md, mdE, sup, dc, tx, nts] = await Promise.all([
         loadAllRows('clients'), loadAllRows('tasks'), loadAllRows('task_log'),
         loadAllRows('categories'), loadAllRows('banks'),
         loadAllRows('contractors'), loadAllRows('contractor_tasks'),
         loadAllRows('deposits'), loadAllRows('deposit_uses'),
         loadAllRows('manual_debts'), loadAllRows('manual_debt_entries'),
         loadAllRows('supply_items'), loadAllRows('day_closures'), loadAllRows('transactions'),
+        loadAllRows('notes'),
       ]);
       const txLog = await loadAllRows('transaction_log');
       const { data: qo } = await supabase.from('app_settings').select('value').eq('key', 'quick_ops').maybeSingle();
@@ -330,6 +341,7 @@ export default function App() {
         entries: mdE.filter(e => e.debt_id === d.id).map(e => ({ date: e.entry_date, what: e.what, amount: +e.amount })),
       })));
       setSupply(sup.map(s => ({ id: s.id, text: s.text, bought: s.bought, author: nameOf(s.created_by), date: dOnly(s.created_at) })));
+      setNotes(nts.map(n => ({ ...n, author: nameOf(n.created_by), date: dOnly(n.updated_at || n.created_at) })));
       setDayClosures(dc.map(c => ({ date: c.close_date, cash_fact: +c.cash_fact, cash_taken: +c.cash_taken || 0, cash_calc: +c.cash_calc, diff: +c.diff, closed_by: nameOf(c.closed_by) })));
       setTransactions(tx.map(t => ({
         ...t, amount: +t.amount, created_by_id: t.created_by, created_by: nameOf(t.created_by), time: hhmm(t.created_at),
@@ -561,6 +573,40 @@ export default function App() {
       return true;
     },
 
+    // Рабочие заметки-шпаргалки: пишут все, удаляет владелец (проверка в UI)
+    async addNote({ title, body }) {
+      if (DEMO) {
+        let created;
+        setNotes(prev => { created = { id: nextId(prev), title, body, pinned: false, author: currentUser.name, updated_by: currentUser.name, updated_at: new Date().toISOString(), date: db.today }; return [created, ...prev]; });
+        return created;
+      }
+      try {
+        const { data, error } = await supabase.from('notes').insert({ title, body, created_by: currentUser.id, updated_by: currentUser.name }).select().single();
+        if (error) throw error;
+        const note = { ...data, author: currentUser.name, date: localDate(data.created_at) };
+        setNotes(prev => [note, ...prev]);
+        return note;
+      } catch (e) { return fail(e); }
+    },
+
+    async updateNote(n, patch) {
+      if (!DEMO) {
+        const { error } = await supabase.from('notes').update({ ...patch, updated_by: currentUser.name, updated_at: new Date().toISOString() }).eq('id', n.id);
+        if (error) return fail(error);
+      }
+      setNotes(prev => prev.map(x => x.id === n.id ? { ...x, ...patch, updated_by: currentUser.name, updated_at: new Date().toISOString(), date: db.today } : x));
+      return true;
+    },
+
+    async removeNote(n) {
+      if (!DEMO) {
+        const { error } = await supabase.from('notes').delete().eq('id', n.id);
+        if (error) return fail(error);
+      }
+      setNotes(prev => prev.filter(x => x.id !== n.id));
+      return true;
+    },
+
     async removeContractorTask(t) {
       if (!DEMO) {
         const { error } = await supabase.from('contractor_tasks').delete().eq('id', t.id);
@@ -786,7 +832,7 @@ export default function App() {
   const sectionProps = {
     supabase, currentUser, userRole, isOwner, isOwnerAccount, showToast, onUpdate: loadAll, loadAllRows, db,
     clients, tasks, categories, banks, transactions, txLogs, contractors, contractorTasks, deposits,
-    manualDebts, supply, dayClosures, quickOps, CONTRACTOR_STAGES,
+    manualDebts, supply, notes, dayClosures, quickOps, CONTRACTOR_STAGES,
     PEOPLE_COLUMNS: peopleColumns, users, demoBankRows: DEMO ? DEMO_BANK_ROWS : [],
     loading, UI, STAGES, PAYMENT_METHODS, DEMO, isMobile,
   };
@@ -852,6 +898,7 @@ export default function App() {
         {tab === 'contractors' && <Contractors {...sectionProps} />}
         {tab === 'deposits' && <Deposits {...sectionProps} />}
         {tab === 'supply' && <Supply {...sectionProps} />}
+        {tab === 'notes' && <Notes {...sectionProps} />}
         {tab === 'finance' && <Finance {...sectionProps} prefillTaskId={payTaskId} />}
         {tab === 'analytics' && isOwner && <Analytics {...sectionProps} />}
         {tab === 'settings' && isOwner && <Settings {...sectionProps} />}

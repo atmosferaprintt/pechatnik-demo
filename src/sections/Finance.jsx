@@ -3,6 +3,7 @@
 // Владелец: лента дня, кнопка «+ Операция» (модалка с той же формой + приватные категории),
 //           тёмная карточка сверки с разницей ±, расхождения «пришло, но не записано».
 // Заглушка на демо-данных.
+import CatPicker from '../CatPicker.jsx';
 import { useState } from 'react';
 import I from '../Icon.jsx';
 
@@ -151,10 +152,10 @@ function EntryForm({ categories, banks, tasks, clients, transactions, db, PAYMEN
       {/* Статьи: у дохода одну сумму можно разбить на несколько категорий */}
       {activeRows.map((r, i) => (
         <div key={i} style={{ display: 'flex', gap: 8 }}>
-          <select style={{ ...input, flex: 1.4, minWidth: 0 }} value={r.cat} onChange={e => setRow(i, { cat: e.target.value })}>
-            <option value="">Категория…</option>
-            {visibleCats.map(c => <option key={c.id} value={c.id}>{c.name}{kindLabel[c.kind] || ''}</option>)}
-          </select>
+          {/* Поисковик вместо длинного селекта категорий (просьба Кристи 2026-07-21) */}
+          <CatPicker UI={UI} mode="id" wrapStyle={{ flex: 1.4, minWidth: 0 }}
+            items={visibleCats.map(c => ({ id: c.id, name: c.name, label: `${c.name}${kindLabel[c.kind] || ''}` }))}
+            value={r.cat} onChange={cat => setRow(i, { cat })} />
           <input style={{ ...input, flex: 1, minWidth: 0, fontSize: 18, fontWeight: 700 }} type="number" placeholder="Сумма, ₽"
             value={r.sum} onChange={e => setRow(i, { sum: e.target.value })} />
           {activeRows.length > 1 && (

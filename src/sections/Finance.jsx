@@ -71,10 +71,12 @@ function EntryForm({ categories, banks, tasks, clients, transactions, db, PAYMEN
       ? c.kind === 'expense_personal'
       : c.kind === 'expense_shared' || c.kind === 'expense_work';
   });
-  // К оплате можно привязать открытые задачи + выданные с долгом (долг гасится тоже отсюда)
+  // К оплате можно привязать открытые задачи + выданные с долгом (долг гасится тоже отсюда).
+  // Долговые — вниз списка единым блоком («чтобы легче найти», Кристи 2026-07-21)
   const paidOf = (id) => paidOfTask(transactions, id);
   const taskDebt = (t) => debtOfTask(transactions, t);
-  const linkTasks = tasks.filter(t => !t.done || taskDebt(t) > 0);
+  const linkTasks = tasks.filter(t => !t.done || taskDebt(t) > 0)
+    .sort((a, b) => (taskDebt(a) > 0) - (taskDebt(b) > 0));
 
   const kindLabel = { expense_shared: '', expense_work: ' · рабочие (приватные)', expense_personal: '' };
 
@@ -309,6 +311,15 @@ function EmployeeView(props) {
     showToast('Исправлено ✓ (в историю записалось, что поменялось)');
   };
   const isToday = opDate === TODAY_D;
+  const isYesterday = opDate === YESTERDAY_D;
+  // Просмотр последней недели (просьба Кристи 2026-07-21, миграция 016);
+  // правка/переносы/закрытие смены — по-прежнему только сегодня и вчера
+  const shiftDay = (dir) => {
+    const d = new Date(opDate + 'T12:00:00');
+    d.setDate(d.getDate() + dir);
+    setOpDate(d.toISOString().slice(0, 10));
+  };
+  const weekAgoD = (() => { const d = new Date(TODAY_D + 'T12:00:00'); d.setDate(d.getDate() - 6); return d.toISOString().slice(0, 10); })();
 
   const catName = (id) => categories.find(c => c.id === id)?.name || '?';
   const catKind = (t) => categories.find(c => c.id === t.category_id)?.kind;
@@ -357,14 +368,19 @@ function EmployeeView(props) {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0 20px', flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: 34, fontWeight: 500, margin: 0 }}>Финансы</h1>
-        {/* Доступ: только сегодня и вчера */}
-        <div style={{ display: 'flex', background: '#fff', borderRadius: 999, padding: 5, boxShadow: UI.shadow }}>
-          {[[TODAY_D, `Сегодня · ${TODAY_D.slice(8, 10)}.${TODAY_D.slice(5, 7)}`], [YESTERDAY_D, `Вчера · ${YESTERDAY_D.slice(8, 10)}.${YESTERDAY_D.slice(5, 7)}`]].map(([d, l]) => (
-            <button key={d} onClick={() => setOpDate(d)} style={{
-              border: 'none', borderRadius: 999, padding: '9px 16px', fontSize: 13, fontWeight: 700,
-              background: opDate === d ? UI.dark : 'transparent', color: opDate === d ? '#fff' : UI.dark,
-            }}>{l}</button>
-          ))}
+        {/* Просмотр последней недели стрелками; правка — только сегодня/вчера */}
+        <div style={{ display: 'flex', alignItems: 'center', background: '#fff', borderRadius: 999, padding: 5, boxShadow: UI.shadow }}>
+          <button onClick={() => shiftDay(-1)} disabled={opDate <= weekAgoD} style={{
+            border: 'none', background: UI.soft, borderRadius: 999, width: 34, height: 34, fontSize: 15,
+            opacity: opDate <= weekAgoD ? 0.3 : 1, cursor: 'pointer',
+          }}>←</button>
+          <span style={{ padding: '0 14px', fontSize: 13.5, fontWeight: 800 }}>
+            {isToday ? `Сегодня · ${opDate.slice(8, 10)}.${opDate.slice(5, 7)}` : isYesterday ? `Вчера · ${opDate.slice(8, 10)}.${opDate.slice(5, 7)}` : RU_DATE(opDate)}
+          </span>
+          <button onClick={() => shiftDay(1)} disabled={isToday} style={{
+            border: 'none', background: UI.soft, borderRadius: 999, width: 34, height: 34, fontSize: 15,
+            opacity: isToday ? 0.3 : 1, cursor: 'pointer',
+          }}>→</button>
         </div>
       </div>
 
@@ -397,11 +413,13 @@ function EmployeeView(props) {
         <div style={{ flex: 1, minWidth: 320, display: 'flex', flexDirection: 'column', gap: 20 }}>
           {/* Лента: сотрудница видит только свои записи, владельческий аккаунт — все */}
           <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 26 }}>
-            <div style={{ fontWeight: 800, marginBottom: 4 }}>{isOwnerAccount ? 'Операции' : 'Мои записи'} за {isToday ? 'сегодня' : 'вчера'} · {feedTx.length}</div>
+            <div style={{ fontWeight: 800, marginBottom: 4 }}>{isOwnerAccount ? 'Операции' : 'Мои записи'} за {isToday ? 'сегодня' : isYesterday ? 'вчера' : RU_DATE(opDate)} · {feedTx.length}</div>
             <div style={{ color: UI.muted, fontSize: 13, marginBottom: 10 }}>
               {isToday
                 ? (isOwnerAccount ? 'Всё, что записано за день — по этому закрывается смена' : 'Твои записи за день. Смена закрывается по всем операциям дня')
-                : 'Вчерашний день: оплату можно перекинуть на сегодня ↪'}
+                : isYesterday
+                  ? 'Вчерашний день: оплату можно перекинуть на сегодня ↪'
+                  : 'Старый день — только просмотр, менять записи можно за сегодня и вчера'}
             </div>
             {/* Фильтр по способам оплаты — кнопки строятся из того, что есть в ленте */}
             {feedTx.length > 0 && (
@@ -433,12 +451,12 @@ function EmployeeView(props) {
                       <I n="clock" size={12} />
                     </span>
                   )}
-                  {(t.created_by === currentUser.name || isOwnerAccount) && t.payment_method !== 'deposit' && (
+                  {(isToday || isYesterday || isOwnerAccount) && (t.created_by === currentUser.name || isOwnerAccount) && t.payment_method !== 'deposit' && (
                     <button onClick={() => openEmpEdit(t)} title="Исправить (способ оплаты, сумма, задача…)" style={{
                       border: 'none', background: UI.soft, borderRadius: 999, width: 26, height: 26, fontSize: 11, cursor: 'pointer',
                     }}><I n="pencil" size={11} /></button>
                   )}
-                  {!isToday && (t.created_by === currentUser.name || isOwnerAccount) && (
+                  {isYesterday && (t.created_by === currentUser.name || isOwnerAccount) && (
                     <button onClick={() => moveToToday(t)} title="Перенести на сегодня" style={{
                       border: 'none', background: UI.soft, borderRadius: 999, width: 26, height: 26, fontSize: 12, fontWeight: 700, cursor: 'pointer',
                     }}>↪</button>
@@ -495,7 +513,8 @@ function EmployeeView(props) {
             {!feedTx.length && <div style={{ color: UI.muted, fontSize: 14 }}>Записей нет</div>}
           </div>
 
-          {/* Закрытие смены */}
+          {/* Закрытие смены — только сегодня/вчера (за старые дни у сотрудницы нет закрытий в доступе) */}
+          {(isToday || isYesterday) && (
           <div style={{ background: UI.dark, color: '#fff', borderRadius: 26, padding: 24 }}>
             <div style={{ fontWeight: 800, marginBottom: 10 }}>Закрытие смены · {opDate.slice(8, 10)}.{opDate.slice(5, 7)}</div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '6px 0' }}>
@@ -556,6 +575,7 @@ function EmployeeView(props) {
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
 
@@ -605,8 +625,9 @@ function EmployeeView(props) {
                 width: '100%', padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 14, outline: 'none',
               }}>
                 <option value="">Без задачи…</option>
-                {/* Выданные с долгом — тоже в списке: оплату по долгу часто записывают позже её прихода */}
-                {tasks.filter(x => !x.done || debtOfTask(transactions, x) > 0 || x.id === empEdit.task_id).map(x => (
+                {/* Выданные с долгом — тоже в списке (внизу единым блоком): оплату по долгу часто записывают позже её прихода */}
+                {tasks.filter(x => !x.done || debtOfTask(transactions, x) > 0 || x.id === empEdit.task_id)
+                  .sort((a, b) => (debtOfTask(transactions, a) > 0) - (debtOfTask(transactions, b) > 0)).map(x => (
                   <option key={x.id} value={x.id}>{taskOptionLabel(transactions, x)}</option>
                 ))}
               </select>
@@ -1103,8 +1124,9 @@ function OwnerView(props) {
                 width: '100%', padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 14, outline: 'none',
               }}>
                 <option value="">Без задачи…</option>
-                {/* Выданные с долгом — тоже в списке: оплату по долгу часто записывают позже её прихода */}
-                {tasks.filter(x => !x.done || debtOfTask(transactions, x) > 0 || x.id === editTx.task_id).map(x => (
+                {/* Выданные с долгом — тоже в списке (внизу единым блоком): оплату по долгу часто записывают позже её прихода */}
+                {tasks.filter(x => !x.done || debtOfTask(transactions, x) > 0 || x.id === editTx.task_id)
+                  .sort((a, b) => (debtOfTask(transactions, a) > 0) - (debtOfTask(transactions, b) > 0)).map(x => (
                   <option key={x.id} value={x.id}>{taskOptionLabel(transactions, x)}</option>
                 ))}
               </select>

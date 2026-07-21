@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Мобилка владельца — варианты интерфейса</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f6f3ec; --bg2:#fdf6dd;
+    --card:#ffffff; --card2:#faf8f2;
+    --accent:#f7d64a;
+    --dark:#1d1d1f;
+    --text:#1d1d1f; --muted:#8a8a85;
+    --line:#e8e4d9; --chip:#d9d9d6;
+    --shadow:0 8px 24px rgba(0,0,0,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:'Manrope',system-ui,-apple-system,sans-serif;
+    background:linear-gradient(135deg,var(--bg) 0%,var(--bg) 55%,var(--bg2) 100%);
+    color:var(--text); min-height:100vh; padding:40px 24px 80px;
+    font-feature-settings:'tnum';
+  }
+  .i{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;vertical-align:-2px;flex-shrink:0}
+
+  .wrap{max-width:1900px;margin:0 auto}
+  .head{max-width:900px;margin:0 auto 48px;text-align:center}
+  .head h1{font-size:40px;font-weight:600;letter-spacing:-.5px;margin-bottom:14px}
+  .head p{color:var(--muted);font-size:15px;line-height:1.65}
+  .head .note{display:inline-flex;align-items:center;gap:8px;margin-top:18px;background:var(--dark);color:#fff;border-radius:999px;padding:10px 20px;font-size:13px}
+  .head .note .y{color:var(--accent);font-weight:700}
+
+  .variants{display:flex;flex-wrap:wrap;gap:48px;justify-content:center;align-items:flex-start}
+  .variant{width:400px}
+  .v-head{margin-bottom:18px;padding:0 6px}
+  .v-num{display:inline-flex;align-items:center;gap:8px;background:var(--accent);border-radius:999px;padding:6px 16px;font-size:13px;font-weight:700;margin-bottom:10px}
+  .v-head h2{font-size:22px;font-weight:600;margin-bottom:6px}
+  .v-head p{font-size:13.5px;color:var(--muted);line-height:1.6}
+  .v-pm{margin-top:10px;font-size:12.5px;line-height:1.7}
+  .v-pm b{font-weight:700}
+
+  /* ── телефон ─────────────────────────── */
+  .phone{
+    width:390px;background:var(--dark);border-radius:52px;padding:11px;
+    box-shadow:0 30px 60px rgba(0,0,0,.18);
+  }
+  .screen{
+    background:linear-gradient(160deg,var(--bg) 0%,var(--bg) 55%,var(--bg2) 100%);
+    border-radius:42px;height:790px;overflow:hidden;position:relative;
+    display:flex;flex-direction:column;
+  }
+  .statusbar{display:flex;justify-content:space-between;align-items:center;padding:14px 26px 6px;font-size:12.5px;font-weight:700;flex-shrink:0}
+  .statusbar .r{display:flex;gap:5px;align-items:center;color:var(--muted)}
+  .batt{width:20px;height:10px;border:1.5px solid var(--muted);border-radius:3px;position:relative}
+  .batt::after{content:'';position:absolute;inset:1.5px;right:5px;background:var(--muted);border-radius:1px}
+  .scroll{flex:1;overflow-y:auto;padding:8px 16px 100px;scrollbar-width:none}
+  .scroll::-webkit-scrollbar{display:none}
+
+  /* общие элементы экрана */
+  .card{background:var(--card);border-radius:22px;box-shadow:var(--shadow);padding:16px;margin-bottom:12px}
+  .dark-card{background:var(--dark);color:#fff;border-radius:24px;padding:20px;margin-bottom:12px}
+  .big{font-size:44px;font-weight:300;letter-spacing:-1px;line-height:1.05}
+  .lbl{font-size:11.5px;color:var(--muted);text-transform:none}
+  .dark-card .lbl{color:#8a8a85}
+  .ysum{color:var(--accent)}
+  .pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:7px 14px;font-size:12.5px;font-weight:600}
+  .pill.dark{background:var(--dark);color:#fff}
+  .pill.yellow{background:var(--accent);color:var(--dark)}
+  .pill.ghost{background:var(--card);box-shadow:var(--shadow)}
+  .pill.warn{background:#fdf0c0;border:1px solid #f0d98a}
+  .row{display:flex;align-items:center;gap:8px}
+  .sb{display:flex;justify-content:space-between;align-items:center}
+  .ava{width:30px;height:30px;border-radius:50%;background:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0}
+  .ava.g{background:#e8e4d9}
+  .muted{color:var(--muted)}
+  .fs11{font-size:11px}.fs12{font-size:12px}.fs13{font-size:13px}.fs14{font-size:14px}
+  .w600{font-weight:600}.w700{font-weight:700}
+
+  /* нижний таб-бар */
+  .tabbar{
+    position:absolute;left:14px;right:14px;bottom:14px;
+    background:var(--card);border-radius:999px;box-shadow:0 12px 32px rgba(0,0,0,.14);
+    display:flex;align-items:center;justify-content:space-around;padding:8px 10px;
+  }
+  .tab{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;color:var(--muted);font-weight:600;padding:6px 10px;border-radius:999px}
+  .tab.active{background:var(--dark);color:#fff;flex-direction:row;gap:7px;font-size:12px;padding:11px 18px}
+  .fab{
+    width:52px;height:52px;border-radius:50%;background:var(--accent);
+    display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:400;
+    box-shadow:0 8px 20px rgba(247,214,74,.5);margin:-26px 4px 0;flex-shrink:0;
+  }
+  .fab-float{
+    position:absolute;right:22px;bottom:26px;width:58px;height:58px;border-radius:50%;
+    background:var(--dark);color:var(--accent);display:flex;align-items:center;justify-content:center;
+    font-size:28px;box-shadow:0 12px 28px rgba(0,0,0,.28);
+  }
+
+  /* прогресс-бар способов оплаты */
+  .paybar{display:flex;height:30px;border-radius:999px;overflow:hidden;gap:3px;margin:10px 0 8px}
+  .paybar div{display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;border-radius:999px}
+  .pb-y{background:var(--accent)}
+  .pb-d{background:var(--dark);color:#fff}
+  .pb-g{background:#d9d9d6}
+  .pb-w{background:#fff;box-shadow:inset 0 0 0 1px var(--line)}
+  .paykey{display:flex;flex-wrap:wrap;gap:10px;font-size:10.5px;color:var(--muted)}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:4px}
+
+  /* лента (вариант 2) */
+  .feed-item{display:flex;gap:10px;padding:11px 4px;border-bottom:1px solid var(--line)}
+  .feed-item:last-child{border-bottom:none}
+  .feed-time{font-size:10.5px;color:var(--muted);width:34px;flex-shrink:0;padding-top:8px;font-weight:600}
+  .feed-body{flex:1;min-width:0}
+  .feed-warn{background:#fdf0c0;border-radius:16px;padding:11px 12px;margin:6px 0}
+
+  /* плитки (вариант 3) */
+  .tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .tile{background:var(--card);border-radius:22px;box-shadow:var(--shadow);padding:16px;min-height:108px;display:flex;flex-direction:column;justify-content:space-between}
+  .tile.span2{grid-column:span 2}
+  .tile.dark{background:var(--dark);color:#fff}
+  .tile.yellow{background:var(--accent)}
+  .tile .tnum{font-size:26px;font-weight:600;letter-spacing:-.5px}
+  .tile.dark .tnum{font-weight:300;font-size:40px}
+  .tile-ico{width:30px;height:30px;border-radius:999px;background:var(--card2);display:flex;align-items:center;justify-content:center}
+  .tile.dark .tile-ico{background:rgba(255,255,255,.1)}
+  .tile.yellow .tile-ico{background:rgba(29,29,31,.08)}
+
+  /* секции-аккордеон (вариант 4) */
+  .sec-h{display:flex;justify-content:space-between;align-items:center;margin:16px 6px 8px;font-size:13px;font-weight:700}
+  .chev{color:var(--muted);font-size:12px}
+
+  .task-row{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .task-row:last-child{border-bottom:none}
+  .badge{border-radius:999px;padding:3px 9px;font-size:10px;font-weight:700}
+  .badge.debt{background:#fde3df;color:#c0392b}
+  .badge.fire{background:#fdf0c0;color:#8a6d00}
+  .badge.ok{background:#e3f2e4;color:#2e7d43}
+
+  /* сравнение */
+  .compare{max-width:1100px;margin:80px auto 0}
+  .compare h2{font-size:28px;font-weight:600;text-align:center;margin-bottom:24px}
+  .compare table{width:100%;border-collapse:separate;border-spacing:0;background:var(--card);border-radius:24px;box-shadow:var(--shadow);overflow:hidden;font-size:13.5px}
+  .compare th{background:var(--dark);color:#fff;padding:14px 18px;text-align:left;font-weight:600}
+  .compare td{padding:14px 18px;border-top:1px solid var(--line);vertical-align:top;line-height:1.55}
+  .compare td:first-child{font-weight:700;white-space:nowrap}
+  .qs{max-width:1100px;margin:40px auto 0;background:var(--card);border-radius:24px;box-shadow:var(--shadow);padding:28px 32px}
+  .qs h3{font-size:18px;margin-bottom:12px}
+  .qs li{margin:8px 0 8px 18px;font-size:14px;line-height:1.6}
+  .qs .hint{color:var(--muted);font-size:12.5px;margin-top:14px}
+
+  /* ── печать в PDF: титул, затем по варианту на страницу ── */
+  @page{size:A4;margin:8mm}
+  @media print{
+    *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{padding:10px 10px 0;min-height:auto;background:linear-gradient(135deg,var(--bg) 0%,var(--bg) 55%,var(--bg2) 100%)}
+    .head{break-after:page;padding-top:120px}
+    .variants{display:block}
+    .variant{width:auto;max-width:420px;margin:0 auto;break-after:page;break-inside:avoid;zoom:.88}
+    /* Chrome печатает размытые тени жёсткими прямоугольниками — в PDF тени убираем */
+    .phone,.fab,.fab-float,.dark-card{box-shadow:none}
+    .card,.pill.ghost,.tile,.tabbar,.compare table,.qs{box-shadow:none;border:1px solid var(--line)}
+    .tile.dark,.tile.yellow{border:none}
+    .scroll{padding-bottom:90px}
+    .compare{margin-top:0;break-inside:avoid}
+    .qs{break-inside:avoid;margin-top:24px}
+  }
+</style>
+</head>
+<body>
+
+<!-- спрайт иконок — 1-в-1 из src/Icon.jsx -->
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-printer" viewBox="0 0 24 24"><path d="M7 8V3h10v5"/><rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 14h10v7H7z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2.5 19.5h19L12 3z"/><path d="M12 10v4"/><path d="M12 17.2v.3"/></symbol>
+  <symbol id="i-income" viewBox="0 0 24 24"><rect x="2.5" y="6.5" width="19" height="11" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 10v.1M18 14v.1"/></symbol>
+  <symbol id="i-expense" viewBox="0 0 24 24"><path d="m2.5 7 8 8 4.5-4.5 6.5 6.5"/><path d="M16 17h5.5v-5.5"/></symbol>
+  <symbol id="i-factory" viewBox="0 0 24 24"><path d="M3 21V9.5l5.5 3.5v-3.5l5.5 3.5V5H21v16H3z"/></symbol>
+  <symbol id="i-landmark" viewBox="0 0 24 24"><path d="m12 3 9 5.5H3L12 3z"/><path d="M5.5 8.5V19M10 8.5V19M14 8.5V19M18.5 8.5V19"/><path d="M3 21h18"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9.5" rx="2"/><path d="M8 11V7.8a4 4 0 0 1 8 0V11"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="m12 2.8 8.5 4.4v9.6L12 21.2l-8.5-4.4V7.2L12 2.8z"/><path d="m3.5 7.2 8.5 4.4 8.5-4.4"/><path d="M12 11.6v9.6"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2.5 4.5 14H10l-1 7.5L17.5 10H12l1-7.5z"/></symbol>
+  <symbol id="i-crown" viewBox="0 0 24 24"><path d="m3.5 8 4.3 3.8L12 5.3l4.2 6.5L20.5 8l-1.8 10.5H5.3L3.5 8z"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-6.2 10-6.2S22 12 22 12s-3.6 6.2-10 6.2S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="m17 3.5 3.5 3.5L8 19.5 3.5 20.5 4.5 16 17 3.5z"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.4"/><path d="M2.8 19.8a6.3 6.3 0 0 1 12.4 0"/><path d="M15.8 5a3.4 3.4 0 0 1 0 6.6"/><path d="M17.6 13.7a6.3 6.3 0 0 1 3.8 5.8"/></symbol>
+  <symbol id="i-card" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M2.5 10h19"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 13.5A8.3 8.3 0 0 1 10.5 4a8.3 8.3 0 1 0 9.5 9.5z"/></symbol>
+  <symbol id="i-cart" viewBox="0 0 24 24"><circle cx="9.5" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/><path d="M3 4h2.2L7.5 16h11L21 8H6.3"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><rect x="4.5" y="3" width="15" height="18" rx="2"/><path d="M8.5 8h7M8.5 12h7M8.5 16h4"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M7 17v-5M12 17V7M17 17v-8"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M5 20.5a7 7 0 0 1 14 0"/></symbol>
+  <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M20 7H5a2 2 0 0 1 0-4h13v4"/><path d="M3 5v14a2 2 0 0 0 2 2h15V7"/><path d="M16 13h.5"/></symbol>
+</svg>
+
+<div class="wrap">
+
+  <div class="head">
+    <h1>Мобилка владельца</h1>
+    <p>Отдельный мобильный интерфейс для Кристи (дерево <b>src/mobile/</b>, включается автоматически на телефоне у аккаунта владельца; у сотрудниц остаётся текущий адаптив). Во всех вариантах одно и то же ядро: <b>контроль дня + быстрый ввод операции + закрытие дня</b>. Разница — что Кристи видит первым экраном и как ходит по разделам.</p>
+    <div class="note"><span class="y">4 варианта</span> · данные на экранах условные, стиль — наш Crextio · варианты можно смешивать</div>
+  </div>
+
+  <div class="variants">
+
+  <!-- ══════════ ВАРИАНТ 1 · ПУЛЬТ ══════════ -->
+  <div class="variant">
+    <div class="v-head">
+      <span class="v-num">Вариант 1</span>
+      <h2>«Пульт» — дашборд + таб-бар</h2>
+      <p>Классическое приложение: снизу 4 вкладки и жёлтая кнопка «+» для быстрой операции. Главный экран — сжатый «Мой день»: касса тёмной карточкой, цифры дня, предупреждения, горящее.</p>
+      <div class="v-pm"><b>+</b> привычно как любое приложение, всё на расстоянии одного тапа<br><b>−</b> дашборд короткий — за деталями надо проваливаться внутрь</div>
+    </div>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span>14:32</span><span class="r">LTE <span class="batt"></span></span></div>
+      <div class="scroll">
+
+        <div class="sb" style="padding:6px 6px 14px">
+          <div class="row">
+            <div class="ava" style="width:38px;height:38px;font-size:14px">К</div>
+            <div>
+              <div class="fs14 w700">Кристи <svg class="i" style="width:13px;color:#c9a400"><use href="#i-crown"/></svg></div>
+              <div class="fs11 muted">понедельник, 21 июля</div>
+            </div>
+          </div>
+          <span class="pill ghost"><svg class="i"><use href="#i-search"/></svg></span>
+        </div>
+
+        <div class="pill warn" style="width:100%;margin-bottom:10px;padding:11px 14px">
+          <svg class="i"><use href="#i-alert"/></svg>&nbsp;СБП 2 000 ₽ — пришло, но не записано
+        </div>
+
+        <div class="dark-card">
+          <div class="sb">
+            <span class="lbl">Должно быть в кассе</span>
+            <svg class="i" style="color:#f7d64a"><use href="#i-wallet"/></svg>
+          </div>
+          <div class="big" style="margin:8px 0 14px">14 490 <span style="font-size:24px">₽</span></div>
+          <div class="sb fs12" style="color:#b9b9b4;margin-bottom:4px"><span>В кассе на утро</span><span>8 340 ₽</span></div>
+          <div class="sb fs12" style="color:#b9b9b4;margin-bottom:14px"><span>Наличными за день</span><span class="ysum">+6 150 ₽</span></div>
+          <span class="pill yellow" style="width:100%;justify-content:center;padding:12px"><svg class="i"><use href="#i-moon"/></svg>&nbsp;Закрыть день</span>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-bottom:12px">
+          <div class="card" style="flex:1;margin:0">
+            <div class="row lbl"><svg class="i"><use href="#i-income"/></svg>&nbsp;Доход дня</div>
+            <div style="font-size:22px;font-weight:600;margin-top:6px">21 724 ₽</div>
+            <div class="fs11 muted" style="margin-top:2px">11 операций</div>
+          </div>
+          <div class="card" style="flex:1;margin:0">
+            <div class="row lbl"><svg class="i"><use href="#i-expense"/></svg>&nbsp;Расходы</div>
+            <div style="font-size:22px;font-weight:600;margin-top:6px">1 340 ₽</div>
+            <div class="fs11 muted" style="margin-top:2px">операционка</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="sb" style="margin-bottom:6px">
+            <span class="fs13 w700"><svg class="i"><use href="#i-zap"/></svg>&nbsp;Горит сегодня</span>
+            <span class="fs11 muted">все задачи →</span>
+          </div>
+          <div class="task-row">
+            <div class="ava g">Н</div>
+            <div style="flex:1;min-width:0">
+              <div class="fs13 w600">Баннер 3×6 · Минкультуры</div>
+              <div class="fs11 muted">Настя · дедлайн сегодня</div>
+            </div>
+            <span class="badge debt">долг 12 000 ₽</span>
+          </div>
+          <div class="task-row">
+            <div class="ava g">А</div>
+            <div style="flex:1;min-width:0">
+              <div class="fs13 w600">Визитки 500 шт · Расул</div>
+              <div class="fs11 muted">Алена · дедлайн завтра</div>
+            </div>
+            <span class="badge fire">горит</span>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:0">
+          <div class="sb">
+            <span class="fs13 w700"><svg class="i"><use href="#i-users"/></svg>&nbsp;Долги</span>
+            <span class="fs13 w700" style="color:#c0392b">59 400 ₽</span>
+          </div>
+          <div class="fs11 muted" style="margin-top:4px">3 задачи · 18 400 ₽ &nbsp;·&nbsp; должники 5 чел · 41 000 ₽</div>
+        </div>
+
+      </div>
+      <div class="tabbar">
+        <span class="tab active"><svg class="i"><use href="#i-zap"/></svg>День</span>
+        <span class="tab"><svg class="i" style="width:18px;height:18px"><use href="#i-printer"/></svg>Задачи</span>
+        <span class="fab">+</span>
+        <span class="tab"><svg class="i" style="width:18px;height:18px"><use href="#i-wallet"/></svg>Финансы</span>
+        <span class="tab"><svg class="i" style="width:18px;height:18px"><use href="#i-box"/></svg>Ещё</span>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- ══════════ ВАРИАНТ 2 · ЛЕНТА ══════════ -->
+  <div class="variant">
+    <div class="v-head">
+      <span class="v-num">Вариант 2</span>
+      <h2>«Лента» — что происходит прямо сейчас</h2>
+      <p>Главный экран — живой поток событий дня: каждая операция, действие по задаче и закрытие смены — строкой с автором и временем (realtime уже есть). Сводка сжата в тёмную шапку. Кристи видит работу типографии не дёргая девочек.</p>
+      <div class="v-pm"><b>+</b> ощущение «я в курсе всего», идеально для контроля издалека<br><b>−</b> цифры дня мелко в шапке, лента требует привычки</div>
+    </div>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span>14:32</span><span class="r">LTE <span class="batt"></span></span></div>
+      <div class="scroll">
+
+        <div class="dark-card" style="padding:16px;margin-bottom:10px">
+          <div class="sb" style="margin-bottom:12px">
+            <span class="row fs13 w700" style="color:#fff"><span class="ava" style="width:26px;height:26px;font-size:11px">К</span>&nbsp;Кристи</span>
+            <span class="fs12" style="color:#8a8a85">← сегодня →</span>
+          </div>
+          <div style="display:flex;gap:8px">
+            <div style="flex:1"><div class="lbl">Касса</div><div style="font-size:19px;font-weight:600;margin-top:2px">14 490</div></div>
+            <div style="flex:1"><div class="lbl">Доход</div><div style="font-size:19px;font-weight:600;margin-top:2px" class="ysum">21 724</div></div>
+            <div style="flex:1"><div class="lbl">Расход</div><div style="font-size:19px;font-weight:600;margin-top:2px">1 340</div></div>
+            <div style="flex:1"><div class="lbl">Смена</div><div style="font-size:12px;font-weight:600;margin-top:7px;color:#f0d98a">открыта</div></div>
+          </div>
+        </div>
+
+        <div class="row" style="gap:6px;margin-bottom:10px;overflow-x:auto">
+          <span class="pill dark">Всё · 23</span>
+          <span class="pill ghost"><svg class="i"><use href="#i-income"/></svg>&nbsp;Деньги</span>
+          <span class="pill ghost"><svg class="i"><use href="#i-printer"/></svg>&nbsp;Задачи</span>
+          <span class="pill ghost"><svg class="i"><use href="#i-moon"/></svg>&nbsp;Смены</span>
+        </div>
+
+        <div class="card" style="padding:6px 14px">
+
+          <div class="feed-item">
+            <span class="feed-time">14:05</span>
+            <div class="ava g">Н</div>
+            <div class="feed-body">
+              <div class="fs13"><b>Настя</b> · доход <b>+850 ₽</b> · СБП</div>
+              <div class="fs11 muted">Визитки, самовывоз</div>
+            </div>
+          </div>
+
+          <div class="feed-item">
+            <span class="feed-time">13:52</span>
+            <div class="ava g">А</div>
+            <div class="feed-body">
+              <div class="fs13"><b>Алена</b> · расход <b>−340 ₽</b> · Доставка</div>
+              <div class="fs11 muted">Яндекс до «Бархата»</div>
+            </div>
+          </div>
+
+          <div class="feed-item">
+            <span class="feed-time">13:40</span>
+            <div class="ava g">В</div>
+            <div class="feed-body">
+              <div class="fs13"><b>Влада</b> · «Меню · кафе Бархат»</div>
+              <div class="fs11 muted">отметка: распечатала</div>
+            </div>
+          </div>
+
+          <div class="feed-warn row">
+            <svg class="i" style="flex-shrink:0"><use href="#i-alert"/></svg>
+            <div class="fs12"><b>13:12 · СБП +2 000 ₽</b> — пришло на счёт, но не записано</div>
+          </div>
+
+          <div class="feed-item">
+            <span class="feed-time">12:58</span>
+            <div class="ava g">Н</div>
+            <div class="feed-body">
+              <div class="fs13"><b>Настя</b> · доход <b>+5 400 ₽</b> · перевод Т-Банк</div>
+              <div class="fs11 muted"><svg class="i" style="width:11px"><use href="#i-printer"/></svg> Баннер 3×6 · Минкультуры</div>
+            </div>
+          </div>
+
+          <div class="feed-item">
+            <span class="feed-time">12:30</span>
+            <div class="ava g">М</div>
+            <div class="feed-body">
+              <div class="fs13"><b>Марьян</b> · «Баннер 3×6 · Минкультуры»</div>
+              <div class="fs11 muted">отметка: подготовила к печати</div>
+            </div>
+          </div>
+
+          <div class="feed-item">
+            <span class="feed-time">11:47</span>
+            <div class="ava g">Л</div>
+            <div class="feed-body">
+              <div class="fs13"><b>Людмила</b> · доход <b>+1 750 ₽</b> · карта</div>
+              <div class="fs11 muted">Фото на документы</div>
+            </div>
+          </div>
+
+          <div class="feed-item">
+            <span class="feed-time">10:15</span>
+            <div class="ava g">А</div>
+            <div class="feed-body">
+              <div class="fs13"><b>Алена</b> · доход <b>+60 ₽</b> · наличные</div>
+              <div class="fs11 muted">Ксерокс</div>
+            </div>
+          </div>
+
+          <div class="feed-item">
+            <span class="feed-time" style="font-size:9.5px">вчера<br>21:04</span>
+            <div class="ava g">А</div>
+            <div class="feed-body">
+              <div class="fs13"><b>Алена</b> закрыла смену <svg class="i" style="width:12px"><use href="#i-moon"/></svg></div>
+              <div class="fs11 muted">остаток 8 340 ₽ · разница ±0</div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+      <div class="tabbar">
+        <span class="tab active"><svg class="i"><use href="#i-zap"/></svg>Лента</span>
+        <span class="tab"><svg class="i" style="width:18px;height:18px"><use href="#i-printer"/></svg>Задачи</span>
+        <span class="fab">+</span>
+        <span class="tab"><svg class="i" style="width:18px;height:18px"><use href="#i-wallet"/></svg>Финансы</span>
+        <span class="tab"><svg class="i" style="width:18px;height:18px"><use href="#i-box"/></svg>Ещё</span>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- ══════════ ВАРИАНТ 3 · ПЛИТКИ ══════════ -->
+  <div class="variant">
+    <div class="v-head">
+      <span class="v-num">Вариант 3</span>
+      <h2>«Плитки» — пульт управления</h2>
+      <p>Главный экран — сетка крупных плиток, у каждой живая цифра: касса, доход, долги, задачи, депозиты, месяц. Ничего читать не надо — состояние всей типографии одним взглядом, тап по плитке ведёт вглубь раздела.</p>
+      <div class="v-pm"><b>+</b> максимум информации без скролла, каждая цифра — кнопка<br><b>−</b> нет «истории» дня — за подробностями всегда тап внутрь</div>
+    </div>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span>14:32</span><span class="r">LTE <span class="batt"></span></span></div>
+      <div class="scroll">
+
+        <div class="sb" style="padding:6px 6px 14px">
+          <div>
+            <div style="font-size:21px;font-weight:600">Добрый день, Кристи</div>
+            <div class="fs11 muted">понедельник, 21 июля · смена открыта</div>
+          </div>
+          <div class="ava" style="width:38px;height:38px;font-size:14px">К</div>
+        </div>
+
+        <div class="tiles">
+
+          <div class="tile dark span2">
+            <div class="sb">
+              <span class="lbl">Должно быть в кассе</span>
+              <span class="pill yellow" style="padding:6px 12px;font-size:11px"><svg class="i" style="width:12px"><use href="#i-moon"/></svg>&nbsp;Закрыть день</span>
+            </div>
+            <div class="tnum">14 490 ₽</div>
+            <div class="fs11" style="color:#8a8a85">на утро 8 340 · за день <span class="ysum">+6 150</span></div>
+          </div>
+
+          <div class="tile yellow">
+            <div class="sb"><span class="lbl" style="color:#6b5d20">Доход дня</span><span class="tile-ico"><svg class="i"><use href="#i-income"/></svg></span></div>
+            <div><div class="tnum">21 724 ₽</div><div class="fs11" style="color:#6b5d20">11 операций</div></div>
+          </div>
+
+          <div class="tile">
+            <div class="sb"><span class="lbl">Расходы дня</span><span class="tile-ico"><svg class="i"><use href="#i-expense"/></svg></span></div>
+            <div><div class="tnum">1 340 ₽</div><div class="fs11 muted">операционка</div></div>
+          </div>
+
+          <div class="tile">
+            <div class="sb"><span class="lbl">Задачи</span><span class="tile-ico"><svg class="i"><use href="#i-printer"/></svg></span></div>
+            <div><div class="tnum">7</div><div class="fs11 muted">в работе · <b style="color:#c0392b">2 горят</b></div></div>
+          </div>
+
+          <div class="tile">
+            <div class="sb"><span class="lbl">Долги</span><span class="tile-ico"><svg class="i"><use href="#i-alert"/></svg></span></div>
+            <div><div class="tnum" style="color:#c0392b">59 400 ₽</div><div class="fs11 muted">3 задачи · 5 чел</div></div>
+          </div>
+
+          <div class="tile span2" style="min-height:auto;flex-direction:row;align-items:center;gap:10px">
+            <span class="tile-ico" style="background:#fdf0c0"><svg class="i"><use href="#i-alert"/></svg></span>
+            <div style="flex:1"><div class="fs13 w700">СБП 2 000 ₽ не записано</div><div class="fs11 muted">пришло в 13:12 · показать строку выписки</div></div>
+            <span class="chev">→</span>
+          </div>
+
+          <div class="tile">
+            <div class="sb"><span class="lbl">Июль</span><span class="tile-ico"><svg class="i"><use href="#i-chart"/></svg></span></div>
+            <div><div class="tnum">348 500 ₽</div><div class="fs11 muted">прибыль 226 200 ₽</div></div>
+          </div>
+
+          <div class="tile">
+            <div class="sb"><span class="lbl">Депозиты</span><span class="tile-ico"><svg class="i"><use href="#i-landmark"/></svg></span></div>
+            <div><div class="tnum">89 400 ₽</div><div class="fs11 muted">6 активных</div></div>
+          </div>
+
+          <div class="tile">
+            <div class="sb"><span class="lbl">Лента дня</span><span class="tile-ico"><svg class="i"><use href="#i-note"/></svg></span></div>
+            <div><div class="tnum">23</div><div class="fs11 muted">записи · последняя 14:05</div></div>
+          </div>
+
+          <div class="tile">
+            <div class="sb"><span class="lbl">Поставка</span><span class="tile-ico"><svg class="i"><use href="#i-cart"/></svg></span></div>
+            <div><div class="tnum">3</div><div class="fs11 muted">нужно купить</div></div>
+          </div>
+
+        </div>
+
+      </div>
+      <div class="fab-float">+</div>
+    </div></div>
+  </div>
+
+  <!-- ══════════ ВАРИАНТ 4 · ОТЧЁТ ══════════ -->
+  <div class="variant">
+    <div class="v-head">
+      <span class="v-num">Вариант 4</span>
+      <h2>«Отчёт» — одна страница, без навигации</h2>
+      <p>Никаких вкладок: одна длинная страница-сводка, читается сверху вниз как утренний отчёт директору — тревоги, касса, деньги дня с разбивкой по способам, задачи, месяц. Секции сворачиваются. Кнопки только две: «+» операция и «Закрыть день».</p>
+      <div class="v-pm"><b>+</b> самый простой: открыла — прочитала за 30 секунд — закрыла<br><b>−</b> это «читалка»: править задачи и копаться в клиентах — уже в полной версии</div>
+    </div>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span>14:32</span><span class="r">LTE <span class="batt"></span></span></div>
+      <div class="scroll">
+
+        <div class="sb" style="padding:6px 6px 4px">
+          <div>
+            <div style="font-size:24px;font-weight:600;letter-spacing:-.4px">Понедельник</div>
+            <div class="fs12 muted">21 июля · ← листать дни →</div>
+          </div>
+          <span class="pill dark" style="font-size:11px">день открыт</span>
+        </div>
+
+        <div class="sec-h"><span><svg class="i"><use href="#i-alert"/></svg>&nbsp;Требует внимания · 2</span><span class="chev">свернуть ▲</span></div>
+        <div class="card" style="padding:12px 14px">
+          <div class="fs12" style="padding:5px 0;border-bottom:1px solid var(--line)"><b>СБП 2 000 ₽</b> — пришло, но не записано · 13:12</div>
+          <div class="fs12" style="padding:6px 0 2px"><b>Баннер 3×6</b> — дедлайн сегодня, долг 12 000 ₽</div>
+        </div>
+
+        <div class="sec-h"><span><svg class="i"><use href="#i-wallet"/></svg>&nbsp;Касса</span><span class="chev">▲</span></div>
+        <div class="dark-card" style="padding:16px;display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div class="lbl">Должно быть</div>
+            <div style="font-size:32px;font-weight:300;letter-spacing:-.5px">14 490 ₽</div>
+            <div class="fs11" style="color:#8a8a85">утро 8 340 · день <span class="ysum">+6 150</span></div>
+          </div>
+          <span class="pill yellow" style="padding:11px 16px"><svg class="i"><use href="#i-moon"/></svg>&nbsp;Закрыть</span>
+        </div>
+
+        <div class="sec-h"><span><svg class="i"><use href="#i-income"/></svg>&nbsp;Деньги дня</span><span class="chev">▲</span></div>
+        <div class="card">
+          <div class="sb">
+            <div><div class="lbl">Доход</div><div style="font-size:24px;font-weight:600">21 724 ₽</div></div>
+            <div style="text-align:right"><div class="lbl">Расходы</div><div style="font-size:24px;font-weight:600">1 340 ₽</div></div>
+          </div>
+          <div class="paybar">
+            <div class="pb-y" style="width:28%">нал</div>
+            <div class="pb-d" style="width:39%">СБП</div>
+            <div class="pb-g" style="width:25%">перевод</div>
+            <div class="pb-w" style="width:8%"></div>
+          </div>
+          <div class="paykey">
+            <span><span class="dot" style="background:var(--accent)"></span>нал 6 150</span>
+            <span><span class="dot" style="background:var(--dark)"></span>СБП 8 424</span>
+            <span><span class="dot" style="background:#d9d9d6"></span>Т-Банк 5 400</span>
+            <span><span class="dot" style="background:#fff;box-shadow:inset 0 0 0 1px var(--line)"></span>карта 1 750</span>
+          </div>
+        </div>
+
+        <div class="sec-h"><span><svg class="i"><use href="#i-printer"/></svg>&nbsp;Задачи · 7 в работе</span><span class="chev">▲</span></div>
+        <div class="card" style="padding:10px 14px">
+          <div class="task-row">
+            <div class="ava g">Н</div>
+            <div style="flex:1"><div class="fs13 w600">Баннер 3×6 · Минкультуры</div><div class="fs11 muted">Настя · сегодня</div></div>
+            <span class="badge debt">12 000 ₽</span>
+          </div>
+          <div class="task-row">
+            <div class="ava g">А</div>
+            <div style="flex:1"><div class="fs13 w600">Визитки 500 шт · Расул</div><div class="fs11 muted">Алена · завтра</div></div>
+            <span class="badge fire">горит</span>
+          </div>
+          <div class="task-row">
+            <div class="ava g">В</div>
+            <div style="flex:1"><div class="fs13 w600">Меню · кафе Бархат</div><div class="fs11 muted">Влада · распечатала</div></div>
+            <span class="badge ok">✓ оплачено</span>
+          </div>
+        </div>
+
+        <div class="sec-h"><span><svg class="i"><use href="#i-chart"/></svg>&nbsp;Июль</span><span class="chev">▲</span></div>
+        <div class="card" style="margin-bottom:0">
+          <div style="display:flex;gap:8px;text-align:center">
+            <div style="flex:1"><div class="lbl">Выручка</div><div class="fs14 w700" style="margin-top:3px">348 500</div></div>
+            <div style="flex:1;border-left:1px solid var(--line)"><div class="lbl">Расходы</div><div class="fs14 w700" style="margin-top:3px">122 300</div></div>
+            <div style="flex:1;border-left:1px solid var(--line)"><div class="lbl">Прибыль</div><div class="fs14 w700 ysum" style="margin-top:3px;color:#c9a400">226 200</div></div>
+          </div>
+        </div>
+
+      </div>
+      <div class="fab-float">+</div>
+    </div></div>
+  </div>
+
+  </div><!-- /variants -->
+
+  <!-- ══════════ СРАВНЕНИЕ ══════════ -->
+  <div class="compare">
+    <h2>Сравнение</h2>
+    <table>
+      <tr><th>Вариант</th><th>Главный экран</th><th>Сильная сторона</th><th>Кому/когда подходит</th></tr>
+      <tr>
+        <td>1 · Пульт</td>
+        <td>Сжатый «Мой день» + таб-бар снизу</td>
+        <td>Полноценное приложение: и контроль, и работа с разделами</td>
+        <td>Если Кристи будет реально работать с телефона (задачи, клиенты), а не только смотреть</td>
+      </tr>
+      <tr>
+        <td>2 · Лента</td>
+        <td>Живой поток событий дня с авторами</td>
+        <td>«Вижу каждую запись девочек в момент появления» — контроль без звонков</td>
+        <td>Если главный сценарий — приглядывать за типографией издалека в течение дня</td>
+      </tr>
+      <tr>
+        <td>3 · Плитки</td>
+        <td>Сетка плиток с живыми цифрами</td>
+        <td>Вся типография одним взглядом, без скролла, каждая цифра — кнопка</td>
+        <td>Если нужен «пульт»: глянула 5 раз в день по 10 секунд</td>
+      </tr>
+      <tr>
+        <td>4 · Отчёт</td>
+        <td>Одна длинная страница-сводка</td>
+        <td>Максимально просто, нечему учиться, ничего не спрятано</td>
+        <td>Если мобилка = «прочитать состояние дня + закрыть день», остальное — с компа</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="qs">
+    <h3>Открытые вопросы (решаем после выбора варианта)</h3>
+    <ul>
+      <li><b>Смешивание.</b> Варианты дружат между собой: например, каркас 1 (таб-бар) + лента из 2 вторым табом + плитка-сетка из 3 на «Ещё». Можно собрать гибрид.</li>
+      <li><b>Что обязательно в v1:</b> быстрая операция «+» (доход/расход, личный тумблер), закрытие дня, лента? Правку задач и клиентов можно отложить на v2.</li>
+      <li><b>PWA:</b> добавить manifest + иконку — CRM ставится на главный экран телефона как приложение (без App Store). Дёшево, выглядит по-настоящему.</li>
+      <li><b>Кому показывать:</b> мобилка только владельцу, или сотрудницам потом сделать свою (быстрый ввод + закрытие смены)?</li>
+    </ul>
+    <div class="hint">Технически: отдельное дерево src/mobile/ c useIsMobile() по CLAUDE.md — desktop-код не трогаем, у сотрудниц на телефонах остаётся текущий адаптив. Данные и права — те же db/RLS, ничего в БД менять не нужно.</div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -343,12 +343,8 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {nParts.map((p, i) => (
                   <div key={i} style={{ display: 'flex', gap: 8 }}>
-                    <select style={{ ...inpS(UI), flex: 1.3, minWidth: 0 }} value={p.name} onChange={e => setNParts(prev => prev.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x))}>
-                      <option value="">Категория…</option>
-                      {/* Старые задачи со свободными названиями частей («Печать») — не теряем при правке */}
-                      {p.name && !incomeCats.some(c => c.name === p.name) && <option value={p.name}>{p.name}</option>}
-                      {incomeCats.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                    </select>
+                    <CatPicker UI={UI} cats={incomeCats} value={p.name}
+                      onChange={name => setNParts(prev => prev.map((x, idx) => idx === i ? { ...x, name } : x))} />
                     <input style={{ ...inpS(UI), flex: 1, minWidth: 0, fontWeight: 700 }} type="number" placeholder="₽" value={p.sum} onChange={e => setNParts(prev => prev.map((x, idx) => idx === i ? { ...x, sum: e.target.value } : x))} />
                     <button onClick={() => setNParts(prev => prev.filter((_, idx) => idx !== i))} style={{ border: 'none', background: UI.soft, borderRadius: 999, width: 36, flexShrink: 0, fontSize: 13 }}>✕</button>
                   </div>
@@ -741,6 +737,52 @@ const inpS = (UI) => ({
   width: '100%', padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`,
   background: UI.soft, fontSize: 14, outline: 'none',
 });
+
+// Поисковик категорий для состава заказа: строка поиска + выпадающий список
+// (категорий доходов стало много — селект неудобен; просьба Кристи 2026-07-21).
+// Свободный текст тоже сохраняется — старые задачи с частями вида «Печать» не ломаем.
+function CatPicker({ value, onChange, cats, UI }) {
+  const [q, setQ] = useState(null); // null — не редактируем, в поле текущее значение
+  const open = q !== null;
+  const query = (q || '').trim().toLowerCase();
+  // Пока текст не менялся (фокус на заполненном поле) — показываем весь список
+  const list = query && q !== (value || '') ? cats.filter(c => c.name.toLowerCase().includes(query)) : cats;
+  const pick = (name) => { onChange(name); setQ(null); };
+  return (
+    <div style={{ position: 'relative', flex: 1.3, minWidth: 0 }}>
+      <input
+        style={inpS(UI)}
+        placeholder="Категория (поиск)…"
+        value={open ? q : (value || '')}
+        onFocus={() => setQ(value || '')}
+        onChange={e => setQ(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && e.target.blur()}
+        onBlur={() => { if (q !== null) { onChange(q.trim()); setQ(null); } }}
+      />
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, zIndex: 40,
+          background: '#fff', border: `1px solid ${UI.line}`, borderRadius: 14,
+          boxShadow: '0 12px 28px rgba(0,0,0,.14)', maxHeight: 208, overflowY: 'auto',
+        }}>
+          {list.map(c => (
+            // onMouseDown с preventDefault — выбор срабатывает раньше blur и не теряет фокус
+            <div key={c.id} onMouseDown={e => { e.preventDefault(); pick(c.name); }} style={{
+              padding: '10px 14px', fontSize: 13.5, cursor: 'pointer',
+              fontWeight: c.name === value ? 800 : 500,
+              borderBottom: `1px solid ${UI.line}`,
+            }}>{c.name}</div>
+          ))}
+          {!list.length && (
+            <div style={{ padding: '10px 14px', fontSize: 12, color: UI.muted }}>
+              Нет такой категории — текст сохранится как есть
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function Fact({ label, value, sub, accent, danger, UI }) {
   return (

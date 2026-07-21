@@ -11,6 +11,17 @@ export default function Finance(props) {
 }
 
 const fmt = (n) => (n || 0).toLocaleString('ru-RU');
+
+// Оплачено/долг по задаче — нужно и форме новой оплаты, и модалкам правки записей:
+// завершённая задача с долгом должна выбираться и при привязке оплаты задним числом
+// («оплата по долгу пришла раньше, записали без задачи — теперь не привязать», Кристи 2026-07-21)
+const paidOfTask = (transactions, id) => transactions.filter(x => x.task_id === id && x.type === 'income').reduce((s, x) => s + x.amount, 0);
+const debtOfTask = (transactions, t) => (t.amount || 0) - paidOfTask(transactions, t.id);
+// Подпись задачи в селектах привязки: «Баннер 3×6 · долг 12 000 ₽ (выдана)»
+const taskOptionLabel = (transactions, t) => {
+  const debt = debtOfTask(transactions, t);
+  return `${t.title}${debt > 0 ? ` · долг ${fmt(debt)} ₽` : ''}${t.done ? ' (выдана)' : ''}`;
+};
 // Общий чек для разбитой на статьи оплаты. ВАЖНО: crypto.randomUUID есть только на HTTPS,
 // а мы пока на http://IP — поэтому свой генератор валидного UUID v4.
 const newBatchId = () => {
@@ -60,8 +71,8 @@ function EntryForm({ categories, banks, tasks, clients, transactions, db, PAYMEN
       : c.kind === 'expense_shared' || c.kind === 'expense_work';
   });
   // К оплате можно привязать открытые задачи + выданные с долгом (долг гасится тоже отсюда)
-  const paidOf = (id) => transactions.filter(x => x.task_id === id && x.type === 'income').reduce((s, x) => s + x.amount, 0);
-  const taskDebt = (t) => (t.amount || 0) - paidOf(t.id);
+  const paidOf = (id) => paidOfTask(transactions, id);
+  const taskDebt = (t) => debtOfTask(transactions, t);
   const linkTasks = tasks.filter(t => !t.done || taskDebt(t) > 0);
 
   const kindLabel = { expense_shared: '', expense_work: ' · рабочие (приватные)', expense_personal: '' };
@@ -593,8 +604,9 @@ function EmployeeView(props) {
                 width: '100%', padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 14, outline: 'none',
               }}>
                 <option value="">Без задачи…</option>
-                {tasks.filter(x => !x.done || x.id === empEdit.task_id).map(x => (
-                  <option key={x.id} value={x.id}>{x.title}</option>
+                {/* Выданные с долгом — тоже в списке: оплату по долгу часто записывают позже её прихода */}
+                {tasks.filter(x => !x.done || debtOfTask(transactions, x) > 0 || x.id === empEdit.task_id).map(x => (
+                  <option key={x.id} value={x.id}>{taskOptionLabel(transactions, x)}</option>
                 ))}
               </select>
             )}
@@ -1090,8 +1102,9 @@ function OwnerView(props) {
                 width: '100%', padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 14, outline: 'none',
               }}>
                 <option value="">Без задачи…</option>
-                {tasks.filter(x => !x.done || x.id === editTx.task_id).map(x => (
-                  <option key={x.id} value={x.id}>{x.title}</option>
+                {/* Выданные с долгом — тоже в списке: оплату по долгу часто записывают позже её прихода */}
+                {tasks.filter(x => !x.done || debtOfTask(transactions, x) > 0 || x.id === editTx.task_id).map(x => (
+                  <option key={x.id} value={x.id}>{taskOptionLabel(transactions, x)}</option>
                 ))}
               </select>
             )}

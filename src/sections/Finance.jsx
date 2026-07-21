@@ -21,6 +21,19 @@ const newBatchId = () => {
   });
 };
 
+// Статьи одной оплаты → одна строка ленты с полной суммой (просьба Кристи 2026-07-21:
+// в банке приход 900, в ленте 300+600 — сверять приходилось, складывая в уме).
+// Свежие пачки связаны batch_id; старые (до batch_id) — автор+способ+тип+секунда записи.
+function groupByBatch(list) {
+  const groups = [], byKey = new Map();
+  for (const t of list) {
+    const k = t.batch_id ? `b${t.batch_id}` : `${t.created_by}|${t.payment_method}|${t.type}|${t.created_at ? t.created_at.slice(0, 19) : `x${t.id}`}`;
+    if (byKey.has(k)) byKey.get(k).push(t);
+    else { const arr = [t]; byKey.set(k, arr); groups.push(arr); }
+  }
+  return groups;
+}
+
 // ---------- Общая форма записи операции ----------
 // У дохода: привязка к задаче (или создание новой задачи на месте) и разбивка суммы
 // на несколько статей дохода — просьбы Кристи от 2026-07-15.
@@ -396,15 +409,13 @@ function EmployeeView(props) {
                 })}
               </div>
             )}
-            {feedTx.filter(t => !mFlt || t.payment_method === mFlt).map(t => (
-              <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
-                <I n={t.type === 'income' ? 'income' : 'expense'} size={14} style={{ color: t.type === 'income' ? '#8a8a85' : '#c0392b' }} />
-                <span style={{ fontWeight: 600 }}>{t.category_id ? catName(t.category_id) : 'Оплата с депозита'}</span>
-                <span style={{ background: UI.soft, borderRadius: 999, padding: '2px 9px', fontSize: 11.5 }}>{mLabel(t.payment_method)}{t.bank_id ? ` · ${bankName(t.bank_id)}` : ''}</span>
-                {t.moved_from && <span style={{ background: 'rgba(247,214,74,.4)', borderRadius: 999, padding: '2px 9px', fontSize: 11.5, fontWeight: 700 }}>↪ со вчера</span>}
-                <span style={{ color: UI.muted, fontSize: 12.5 }}>{t.comment}</span>
-                {/* Хвост строки: кнопки ДО цифр, сумма и аватар фиксированной ширины — цифры выровнены */}
-                <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+            {groupByBatch(feedTx.filter(t => !mFlt || t.payment_method === mFlt)).map(g => {
+              const t0 = g[0];
+              const isBatch = g.length > 1;
+              const total = g.reduce((s, x) => s + x.amount, 0);
+              // Кнопки статьи: ✎, переносы, удаление — как раньше, на каждой записи
+              const rowButtons = (t) => (
+                <>
                   {t.log?.length > 0 && (
                     <span title={t.log.map(l => `${l.who}: ${l.action} (${l.time})`).join('\n')} style={{ color: UI.muted, display: 'inline-flex' }}>
                       <I n="clock" size={12} />
@@ -430,17 +441,45 @@ function EmployeeView(props) {
                       }}>✕</button>
                     </>
                   )}
-                  <span style={{ minWidth: 86, textAlign: 'right', fontWeight: 700, color: t.type === 'expense' ? '#c0392b' : UI.dark }}>
-                    {t.type === 'income' ? '+' : '−'}{fmt(t.amount)} ₽
+                </>
+              );
+              return (
+              <div key={t0.id} style={{ borderBottom: `1px solid ${UI.line}`, padding: '10px 2px', fontSize: 14 }}>
+                {/* Главная строка: у разбитой оплаты — полная сумма, как один приход в банке */}
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <I n={t0.type === 'income' ? 'income' : 'expense'} size={14} style={{ color: t0.type === 'income' ? '#8a8a85' : '#c0392b' }} />
+                  <span style={{ fontWeight: 600 }}>{isBatch ? `Оплата · ${g.length} статьи` : t0.category_id ? catName(t0.category_id) : 'Оплата с депозита'}</span>
+                  <span style={{ background: UI.soft, borderRadius: 999, padding: '2px 9px', fontSize: 11.5 }}>{mLabel(t0.payment_method)}{t0.bank_id ? ` · ${bankName(t0.bank_id)}` : ''}</span>
+                  {t0.moved_from && <span style={{ background: 'rgba(247,214,74,.4)', borderRadius: 999, padding: '2px 9px', fontSize: 11.5, fontWeight: 700 }}>↪ со вчера</span>}
+                  <span style={{ color: UI.muted, fontSize: 12.5 }}>{t0.comment}</span>
+                  {/* Хвост строки: кнопки ДО цифр, сумма и аватар фиксированной ширины — цифры выровнены */}
+                  <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                    {!isBatch && rowButtons(t0)}
+                    <span style={{ minWidth: 86, textAlign: 'right', fontWeight: 700, color: t0.type === 'expense' ? '#c0392b' : UI.dark }}>
+                      {t0.type === 'income' ? '+' : '−'}{fmt(total)} ₽
+                    </span>
+                    <span title={t0.created_by} style={{
+                      width: 24, height: 24, borderRadius: '50%', background: t0.created_by === currentUser.name ? UI.accent : UI.dark,
+                      color: t0.created_by === currentUser.name ? UI.dark : '#fff',
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0,
+                    }}>{t0.created_by[0]}</span>
                   </span>
-                  <span title={t.created_by} style={{
-                    width: 24, height: 24, borderRadius: '50%', background: t.created_by === currentUser.name ? UI.accent : UI.dark,
-                    color: t.created_by === currentUser.name ? UI.dark : '#fff',
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0,
-                  }}>{t.created_by[0]}</span>
-                </span>
+                </div>
+                {/* Статьи разбитой оплаты */}
+                {isBatch && g.map(t => (
+                  <div key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '5px 0 0 26px', fontSize: 13 }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: UI.muted, flexShrink: 0 }} />
+                    <span style={{ fontWeight: 600 }}>{t.category_id ? catName(t.category_id) : 'Оплата с депозита'}</span>
+                    <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                      {rowButtons(t)}
+                      <span style={{ minWidth: 86, textAlign: 'right', fontWeight: 700 }}>{t.type === 'income' ? '+' : '−'}{fmt(t.amount)} ₽</span>
+                      <span style={{ width: 24, flexShrink: 0 }} />
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
+              );
+            })}
             {!feedTx.length && <div style={{ color: UI.muted, fontSize: 14 }}>Записей нет</div>}
           </div>
 
@@ -819,60 +858,87 @@ function OwnerView(props) {
             </div>
           )}
           <div style={{ maxHeight: 430, overflowY: 'auto', paddingRight: 6 }}>
-          {dailyTx.filter(t => {
+          {groupByBatch(dailyTx.filter(t => {
             const q = txQuery.trim().toLowerCase();
             const label = (t.category_id ? catName(t.category_id) : 'депозит') + ' ' + (t.comment || '') + ' ' + t.created_by;
             return (!q || label.toLowerCase().includes(q)) && (!txType || t.type === txType) && (!txMethod || t.payment_method === txMethod);
-          }).map(t => (
-            <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14, flexWrap: 'wrap' }}>
-              <I n={t.type === 'income' ? 'income' : 'expense'} size={14} style={{ color: t.type === 'income' ? '#8a8a85' : '#c0392b' }} />
-              <span style={{ fontWeight: 600 }}>{t.category_id ? catName(t.category_id) : 'Оплата с депозита'}</span>
-              {t.moved_from && <span style={{ background: 'rgba(247,214,74,.4)', borderRadius: 999, padding: '3px 10px', fontSize: 11.5, fontWeight: 700 }}>↪ со вчера</span>}
-              <span style={{ background: UI.soft, borderRadius: 999, padding: '3px 10px', fontSize: 12 }}>
-                {mLabel(t.payment_method)}{t.bank_id ? ` · ${bankName(t.bank_id)}` : ''}
-              </span>
-              {t.task_id && (
-                <span style={{ background: 'rgba(247,214,74,.35)', borderRadius: 999, padding: '3px 10px', fontSize: 12 }}>
-                  <I n="link" size={11} /> {taskTitle(t.task_id)}
-                </span>
-              )}
-              <span style={{ color: UI.muted, fontSize: 12.5 }}>{t.comment}</span>
-              <span style={{ marginLeft: 'auto', fontWeight: 700, color: t.type === 'expense' ? '#c0392b' : UI.dark }}>
-                {t.type === 'expense' ? '−' : '+'}{fmt(t.amount)} ₽
-              </span>
-              <span title={`Записал(а): ${t.created_by}`} style={{
-                width: 26, height: 26, borderRadius: '50%', background: UI.accent, display: 'inline-flex',
-                alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0,
-              }}>{t.created_by[0]}</span>
-              <span style={{ color: UI.muted, fontSize: 12.5 }}>{t.time}</span>
-              {!isToday && t.type === 'income' && (
-                <button onClick={() => moveToToday(t)} title="Перенести на сегодня" style={{
-                  border: 'none', background: UI.soft, borderRadius: 999, padding: '5px 12px', fontSize: 12, fontWeight: 700,
-                }}>↪ на сегодня</button>
-              )}
-              {t.log?.length > 0 && (
-                <button onClick={() => setHistoryTxId(v => v === t.id ? null : t.id)} title="История записи" style={{
-                  border: 'none', background: historyTxId === t.id ? UI.dark : UI.soft, color: historyTxId === t.id ? '#fff' : UI.dark,
-                  borderRadius: 999, padding: '4px 9px', fontSize: 11.5, cursor: 'pointer',
-                }}><I n="clock" size={11} /></button>
-              )}
-              <button onClick={() => openTxEdit(t)} title="Исправить (дата, сумма, категория…)" style={{
-                border: 'none', background: UI.soft, borderRadius: 999, padding: '4px 9px', fontSize: 11.5, cursor: 'pointer',
-              }}><I n="pencil" size={11} /></button>
-              <button onClick={() => { db.removeTransaction(t); showToast('Операция удалена'); }} title="Удалить" style={{
-                border: 'none', background: UI.soft, borderRadius: 999, padding: '4px 9px', fontSize: 11.5, color: UI.muted, cursor: 'pointer',
-              }}>✕</button>
-              {historyTxId === t.id && t.log?.length > 0 && (
-                <div style={{ width: '100%', background: UI.soft, borderRadius: 12, padding: '6px 12px', marginTop: 6, fontSize: 12.5 }}>
-                  {t.log.map((l, i) => (
-                    <div key={i} style={{ display: 'flex', gap: 8, padding: '3px 0' }}>
-                      <b>{l.who}</b><span>{l.action}</span><span style={{ marginLeft: 'auto', color: UI.muted }}>{l.time}</span>
-                    </div>
-                  ))}
+          })).map(g => {
+            const t0 = g[0];
+            const isBatch = g.length > 1;
+            const total = g.reduce((s, x) => s + x.amount, 0);
+            const rowButtons = (t) => (
+              <>
+                {!isToday && t.type === 'income' && (
+                  <button onClick={() => moveToToday(t)} title="Перенести на сегодня" style={{
+                    border: 'none', background: UI.soft, borderRadius: 999, padding: '5px 12px', fontSize: 12, fontWeight: 700,
+                  }}>↪ на сегодня</button>
+                )}
+                {t.log?.length > 0 && (
+                  <button onClick={() => setHistoryTxId(v => v === t.id ? null : t.id)} title="История записи" style={{
+                    border: 'none', background: historyTxId === t.id ? UI.dark : UI.soft, color: historyTxId === t.id ? '#fff' : UI.dark,
+                    borderRadius: 999, padding: '4px 9px', fontSize: 11.5, cursor: 'pointer',
+                  }}><I n="clock" size={11} /></button>
+                )}
+                <button onClick={() => openTxEdit(t)} title="Исправить (дата, сумма, категория…)" style={{
+                  border: 'none', background: UI.soft, borderRadius: 999, padding: '4px 9px', fontSize: 11.5, cursor: 'pointer',
+                }}><I n="pencil" size={11} /></button>
+                <button onClick={() => { db.removeTransaction(t); showToast('Операция удалена'); }} title="Удалить" style={{
+                  border: 'none', background: UI.soft, borderRadius: 999, padding: '4px 9px', fontSize: 11.5, color: UI.muted, cursor: 'pointer',
+                }}>✕</button>
+              </>
+            );
+            const historyBlock = (t) => historyTxId === t.id && t.log?.length > 0 && (
+              <div style={{ width: '100%', background: UI.soft, borderRadius: 12, padding: '6px 12px', marginTop: 6, fontSize: 12.5 }}>
+                {t.log.map((l, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 8, padding: '3px 0' }}>
+                    <b>{l.who}</b><span>{l.action}</span><span style={{ marginLeft: 'auto', color: UI.muted }}>{l.time}</span>
+                  </div>
+                ))}
+              </div>
+            );
+            return (
+              <div key={t0.id} style={{ borderBottom: `1px solid ${UI.line}`, padding: '10px 2px', fontSize: 14 }}>
+                {/* Главная строка: у разбитой оплаты — ПОЛНАЯ сумма (как один приход в банке) */}
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <I n={t0.type === 'income' ? 'income' : 'expense'} size={14} style={{ color: t0.type === 'income' ? '#8a8a85' : '#c0392b' }} />
+                  <span style={{ fontWeight: 600 }}>{isBatch ? `Оплата · ${g.length} статьи` : t0.category_id ? catName(t0.category_id) : 'Оплата с депозита'}</span>
+                  {t0.moved_from && <span style={{ background: 'rgba(247,214,74,.4)', borderRadius: 999, padding: '3px 10px', fontSize: 11.5, fontWeight: 700 }}>↪ со вчера</span>}
+                  <span style={{ background: UI.soft, borderRadius: 999, padding: '3px 10px', fontSize: 12 }}>
+                    {mLabel(t0.payment_method)}{t0.bank_id ? ` · ${bankName(t0.bank_id)}` : ''}
+                  </span>
+                  {t0.task_id && (
+                    <span style={{ background: 'rgba(247,214,74,.35)', borderRadius: 999, padding: '3px 10px', fontSize: 12 }}>
+                      <I n="link" size={11} /> {taskTitle(t0.task_id)}
+                    </span>
+                  )}
+                  <span style={{ color: UI.muted, fontSize: 12.5 }}>{t0.comment}</span>
+                  <span style={{ marginLeft: 'auto', fontWeight: 700, color: t0.type === 'expense' ? '#c0392b' : UI.dark }}>
+                    {t0.type === 'expense' ? '−' : '+'}{fmt(total)} ₽
+                  </span>
+                  <span title={`Записал(а): ${t0.created_by}`} style={{
+                    width: 26, height: 26, borderRadius: '50%', background: UI.accent, display: 'inline-flex',
+                    alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0,
+                  }}>{t0.created_by[0]}</span>
+                  <span style={{ color: UI.muted, fontSize: 12.5 }}>{t0.time}</span>
+                  {!isBatch && rowButtons(t0)}
+                  {!isBatch && historyBlock(t0)}
                 </div>
-              )}
-            </div>
-          ))}
+                {/* Статьи разбитой оплаты — подстроками, каждая со своими кнопками */}
+                {isBatch && g.map(t => (
+                  <div key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '6px 0 0 26px', fontSize: 13 }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: UI.muted, flexShrink: 0 }} />
+                    <span style={{ fontWeight: 600 }}>{t.category_id ? catName(t.category_id) : 'Оплата с депозита'}</span>
+                    {t.task_id && t.task_id !== t0.task_id && (
+                      <span style={{ background: 'rgba(247,214,74,.35)', borderRadius: 999, padding: '2px 9px', fontSize: 11.5 }}><I n="link" size={10} /> {taskTitle(t.task_id)}</span>
+                    )}
+                    <span style={{ marginLeft: 'auto', fontWeight: 700 }}>{t.type === 'expense' ? '−' : '+'}{fmt(t.amount)} ₽</span>
+                    {rowButtons(t)}
+                    {historyBlock(t)}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
           {!dailyTx.length && <div style={{ color: UI.muted, fontSize: 14 }}>Записей за этот день нет</div>}
           </div>
         </div>

@@ -16,10 +16,58 @@ export default function Notes({ notes, isOwnerAccount, db, UI, showToast }) {
   const [fBody, setFBody] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Порядок: закреплённые всегда сверху, внутри группы — ручной (sort_order, NULL = порядок создания)
+  const orderKey = (n) => n.sort_order ?? n.id;
   const q = query.trim().toLowerCase();
   const list = notes
     .filter(n => !q || n.title.toLowerCase().includes(q) || (n.body || '').toLowerCase().includes(q))
-    .sort((a, b) => (b.pinned === a.pinned ? 0 : b.pinned ? 1 : -1) || (b.updated_at || '').localeCompare(a.updated_at || ''));
+    .sort((a, b) => (b.pinned === a.pinned ? 0 : b.pinned ? 1 : -1) || (orderKey(a) - orderKey(b)));
+
+  // Перетаскивание «по смыслу», как карточки задач (просьба Кристи 2026-07-19).
+  // Сетка, не колонки: место вставки считаем и по строке (Y), и по половинке карточки (X).
+  // Жёлтая полоска — слева от карточки, перед которой встанет заметка (или справа от последней).
+  const [dragId, setDragId] = useState(null);
+  const [dropAt, setDropAt] = useState(null); // { index } в отображаемом списке
+
+  const dragOverGrid = (e) => {
+    if (dragId == null) return;
+    e.preventDefault();
+    const cards = [...e.currentTarget.querySelectorAll('[data-nid]')];
+    let index = cards.length;
+    for (let i = 0; i < cards.length; i++) {
+      const r = cards[i].getBoundingClientRect();
+      if (e.clientY < r.top - 4) { index = i; break; }                                  // строка выше — перед этой
+      if (e.clientY <= r.bottom + 4 && e.clientX < r.left + r.width / 2) { index = i; break; } // та же строка, левее середины
+    }
+    setDropAt(d => d && d.index === index ? d : { index });
+  };
+
+  const dropOnGrid = () => {
+    const n = notes.find(x => x.id === dragId);
+    const at = dropAt;
+    setDragId(null); setDropAt(null);
+    if (!n || !at) return;
+
+    const oldIdx = list.findIndex(x => x.id === n.id);
+    const rest = list.filter(x => x.id !== n.id);
+    let index = oldIdx !== -1 && at.index > oldIdx ? at.index - 1 : at.index;
+    // Закреплённые всегда выше обычных — вставку зажимаем в границы своей группы
+    const firstUnpinned = rest.findIndex(x => !x.pinned);
+    const segStart = n.pinned ? 0 : (firstUnpinned === -1 ? rest.length : firstUnpinned);
+    const segEnd = n.pinned ? (firstUnpinned === -1 ? rest.length : firstUnpinned) : rest.length;
+    index = Math.max(segStart, Math.min(segEnd, index));
+    if (index === oldIdx || !rest.length) return;
+
+    const before = rest[index - 1], after = rest[index];
+    const ord = !before ? orderKey(after) - 1 : !after ? orderKey(before) + 1 : (orderKey(before) + orderKey(after)) / 2;
+    if (before && after && (ord === orderKey(before) || ord === orderKey(after))) {
+      // Зазор выродился — перенумеровываем отображаемый список целиком
+      const newList = [...rest.slice(0, index), n, ...rest.slice(index)];
+      newList.forEach((x, i) => db.updateNote(x, { sort_order: i + 1 }, { touch: false }));
+      return;
+    }
+    db.updateNote(n, { sort_order: ord }, { touch: false });
+  };
 
   const openEdit = (n) => {
     setEditNote(n); setFTitle(n.title); setFBody(n.body || '');
@@ -60,12 +108,20 @@ export default function Notes({ notes, isOwnerAccount, db, UI, showToast }) {
         background: '#fff', boxShadow: UI.shadow, fontSize: 13.5, outline: 'none', marginBottom: 16, display: 'block',
       }} />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 14 }}>
-        {list.map(n => (
-          <div key={n.id} onClick={() => setOpenNote(n)} style={{
+      <div onDragOver={dragOverGrid} onDrop={e => { e.preventDefault(); dropOnGrid(); }}
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 14 }}>
+        {list.map((n, i) => {
+          const ind = dropAt?.index === i ? 'left' : dropAt?.index === list.length && i === list.length - 1 ? 'right' : null;
+          return (
+          <div key={n.id} data-nid={n.id} draggable
+            onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(n.id)); setDragId(n.id); }}
+            onDragEnd={() => { setDragId(null); setDropAt(null); }}
+            onClick={() => setOpenNote(n)} style={{
             background: n.pinned ? 'rgba(247,214,74,.25)' : '#fff', borderRadius: 20, padding: '16px 18px',
-            boxShadow: UI.shadow, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 8,
+            boxShadow: ind === 'left' ? `-7px 0 0 ${UI.accent}, ${UI.shadow}` : ind === 'right' ? `7px 0 0 ${UI.accent}, ${UI.shadow}` : UI.shadow,
+            cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 8,
             border: n.pinned ? `1.5px solid ${UI.accent}` : '1.5px solid transparent',
+            opacity: dragId === n.id ? 0.35 : 1,
           }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
               <span style={{ fontWeight: 800, fontSize: 14.5, lineHeight: 1.3 }}>{n.title}</span>
@@ -80,7 +136,8 @@ export default function Notes({ notes, isOwnerAccount, db, UI, showToast }) {
               <I n="note" size={11} /> {n.updated_by || n.author} · {dm(n.date)}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
       {!list.length && (
         <div style={{ color: UI.muted, fontSize: 14, background: '#fff', borderRadius: 20, padding: 24, boxShadow: UI.shadow, maxWidth: 480 }}>

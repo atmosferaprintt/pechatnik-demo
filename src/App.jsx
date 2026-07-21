@@ -406,8 +406,9 @@ export default function App() {
     profName: (id) => users.find(u => u.id === id)?.name || '—',
 
     async addTransactions(recs) { // recs без id/created_by/time — проставляются здесь
+      // batch_id (общий чек разбитой оплаты) приходит готовым из формы (EntryForm, newBatchId)
       if (DEMO) {
-        setTransactions(prev => [...prev, ...recs.map((r, i) => ({ id: nextId(prev) + i, created_by: currentUser.name, time: nowT(), op_date: db.today, ...r }))]);
+        setTransactions(prev => [...prev, ...recs.map((r, i) => ({ id: nextId(prev) + i, created_by: currentUser.name, time: nowT(), op_date: db.today, created_at: new Date().toISOString(), ...r }))]);
         return true;
       }
       try {
@@ -589,12 +590,14 @@ export default function App() {
       } catch (e) { return fail(e); }
     },
 
-    async updateNote(n, patch) {
+    // touch: false — служебные правки (перетаскивание, закреп) не меняют «кто и когда обновил»
+    async updateNote(n, patch, { touch = true } = {}) {
+      const stamp = touch ? { updated_by: currentUser.name, updated_at: new Date().toISOString() } : {};
       if (!DEMO) {
-        const { error } = await supabase.from('notes').update({ ...patch, updated_by: currentUser.name, updated_at: new Date().toISOString() }).eq('id', n.id);
+        const { error } = await supabase.from('notes').update({ ...patch, ...stamp }).eq('id', n.id);
         if (error) return fail(error);
       }
-      setNotes(prev => prev.map(x => x.id === n.id ? { ...x, ...patch, updated_by: currentUser.name, updated_at: new Date().toISOString(), date: db.today } : x));
+      setNotes(prev => prev.map(x => x.id === n.id ? { ...x, ...patch, ...stamp, ...(touch ? { date: db.today } : {}) } : x));
       return true;
     },
 

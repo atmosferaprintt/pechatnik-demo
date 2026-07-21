@@ -63,6 +63,9 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
   const payments = (taskId) => transactions.filter(t => t.task_id === taskId && t.type === 'income');
   const paidSum = (taskId) => payments(taskId).reduce((s, p) => s + p.amount, 0);
   const catName = (id) => categories.find(c => c.id === id)?.name || '?';
+  // Части состава заказа выбираются из категорий доходов (просьба Кристи 2026-07-21) —
+  // тогда «разбить по составу» в форме оплаты попадает в категории автоматически
+  const incomeCats = categories.filter(c => c.kind === 'income');
   const taskDebt = (t) => (t.amount || 0) - paidSum(t.id);
 
   // Поиск по названию/клиенту + быстрые фильтры «с долгом» и «горят»
@@ -332,7 +335,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
             {nParts.length === 0 ? (
               <div style={{ display: 'flex', gap: 8 }}>
                 <input style={{ ...inpS(UI), flex: 1, minWidth: 0, fontWeight: 700 }} type="number" placeholder="Сумма, ₽" value={nAmount} onChange={e => setNAmount(e.target.value)} />
-                <button onClick={() => setNParts([{ name: 'Печать', sum: '' }, { name: 'Дизайн', sum: '' }])} style={{
+                <button onClick={() => setNParts([{ name: '', sum: '' }, { name: '', sum: '' }])} style={{
                   border: `1.5px dashed ${UI.muted}`, background: 'transparent', borderRadius: 999, padding: '0 14px', fontSize: 12, color: UI.muted, fontWeight: 600, flexShrink: 0,
                 }}>разбить на состав</button>
               </div>
@@ -340,7 +343,12 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {nParts.map((p, i) => (
                   <div key={i} style={{ display: 'flex', gap: 8 }}>
-                    <input style={{ ...inpS(UI), flex: 1.3, minWidth: 0 }} placeholder="Часть (печать…)" value={p.name} onChange={e => setNParts(prev => prev.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x))} />
+                    <select style={{ ...inpS(UI), flex: 1.3, minWidth: 0 }} value={p.name} onChange={e => setNParts(prev => prev.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x))}>
+                      <option value="">Категория…</option>
+                      {/* Старые задачи со свободными названиями частей («Печать») — не теряем при правке */}
+                      {p.name && !incomeCats.some(c => c.name === p.name) && <option value={p.name}>{p.name}</option>}
+                      {incomeCats.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                    </select>
                     <input style={{ ...inpS(UI), flex: 1, minWidth: 0, fontWeight: 700 }} type="number" placeholder="₽" value={p.sum} onChange={e => setNParts(prev => prev.map((x, idx) => idx === i ? { ...x, sum: e.target.value } : x))} />
                     <button onClick={() => setNParts(prev => prev.filter((_, idx) => idx !== i))} style={{ border: 'none', background: UI.soft, borderRadius: 999, width: 36, flexShrink: 0, fontSize: 13 }}>✕</button>
                   </div>

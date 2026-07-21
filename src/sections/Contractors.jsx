@@ -46,15 +46,19 @@ function ContractorBoard({ contractors, contractorTasks, db, CONTRACTOR_STAGES, 
   const [eTitle, setETitle] = useState('');
   const [eComment, setEComment] = useState('');
   const [eAmount, setEAmount] = useState('');
+  const [ePaid, setEPaid] = useState('');
   const [eDeadline, setEDeadline] = useState('');
 
+  // Долг подрядчику = полная сумма − оплачено («полная сумма и долг графа», Кристи 2026-07-21)
+  const debtOf = (t) => (t.amount || 0) - (t.paid || 0);
+
   const startEdit = (t) => {
-    setEditId(t.id); setETitle(t.title); setEComment(t.comment || ''); setEAmount(t.amount || ''); setEDeadline(t.deadline || '');
+    setEditId(t.id); setETitle(t.title); setEComment(t.comment || ''); setEAmount(t.amount || ''); setEPaid(t.paid || ''); setEDeadline(t.deadline || '');
   };
 
   const saveEdit = (t) => {
     if (!eTitle.trim()) { showToast('Название не может быть пустым', 'error'); return; }
-    db.updateContractorTask(t, { title: eTitle.trim(), comment: eComment.trim(), amount: +eAmount || null, deadline: eDeadline || null });
+    db.updateContractorTask(t, { title: eTitle.trim(), comment: eComment.trim(), amount: +eAmount || null, paid: +ePaid || 0, deadline: eDeadline || null });
     setEditId(null);
     showToast('Исправлено ✓');
   };
@@ -66,6 +70,7 @@ function ContractorBoard({ contractors, contractorTasks, db, CONTRACTOR_STAGES, 
   const [title, setTitle] = useState('');
   const [contractorId, setContractorId] = useState('');
   const [amount, setAmount] = useState('');
+  const [paidNew, setPaidNew] = useState('');
   const [deadline, setDeadline] = useState('');
   const [comment, setComment] = useState('');
 
@@ -83,9 +88,9 @@ function ContractorBoard({ contractors, contractorTasks, db, CONTRACTOR_STAGES, 
     if (!title.trim() || !contractorId) { showToast('Укажи название и подрядчика', 'error'); return; }
     db.addContractorTask({
       title: title.trim(), contractor_id: +contractorId,
-      amount: +amount || null, deadline: deadline || null, stage: 'В работе', task_id: null, comment: comment.trim(),
+      amount: +amount || null, paid: +paidNew || 0, deadline: deadline || null, stage: 'В работе', task_id: null, comment: comment.trim(),
     });
-    setTitle(''); setContractorId(''); setAmount(''); setDeadline(''); setComment(''); setShowAdd(false);
+    setTitle(''); setContractorId(''); setAmount(''); setPaidNew(''); setDeadline(''); setComment(''); setShowAdd(false);
     showToast('Задача подрядчику создана ✓');
   };
 
@@ -115,12 +120,15 @@ function ContractorBoard({ contractors, contractorTasks, db, CONTRACTOR_STAGES, 
           const inStage = contractorTasks.filter(t => t.stage === stage
             && (!q || t.title.toLowerCase().includes(q) || (contractors.find(c => c.id === t.contractor_id)?.name || '').toLowerCase().includes(q)));
           const sum = inStage.reduce((s, t) => s + (t.amount || 0), 0);
+          const colDebt = inStage.reduce((s, t) => s + Math.max(0, (t.amount || 0) - (t.paid || 0)), 0);
           return (
             <div key={stage} style={{ minWidth: 260, flex: 1, background: si === CONTRACTOR_STAGES.length - 1 ? '#f0ecdf' : UI.soft, borderRadius: 22, padding: 14 }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12, padding: '0 4px' }}>
                 <span style={{ fontWeight: 800, fontSize: 15 }}>{stage}</span>
                 <span style={{ background: UI.dark, color: '#fff', borderRadius: 999, fontSize: 12, fontWeight: 700, padding: '2px 9px' }}>{inStage.length}</span>
-                <span style={{ marginLeft: 'auto', color: UI.muted, fontSize: 12, fontWeight: 600 }}>{sum ? `${fmt(sum)} ₽` : ''}</span>
+                <span style={{ marginLeft: 'auto', color: UI.muted, fontSize: 12, fontWeight: 600 }}>
+                  {sum ? `${fmt(sum)} ₽` : ''}{colDebt > 0 ? <span style={{ color: '#c0392b' }}> · долг {fmt(colDebt)} ₽</span> : ''}
+                </span>
               </div>
 
               {inStage.map(t => {
@@ -132,9 +140,15 @@ function ContractorBoard({ contractors, contractorTasks, db, CONTRACTOR_STAGES, 
                         <input style={input} value={eTitle} onChange={e => setETitle(e.target.value)} placeholder="Название" />
                         <input style={input} value={eComment} onChange={e => setEComment(e.target.value)} placeholder="Комментарий" />
                         <div style={{ display: 'flex', gap: 7 }}>
-                          <input style={{ ...input, flex: 1, minWidth: 0 }} type="number" value={eAmount} onChange={e => setEAmount(e.target.value)} placeholder="Сумма, ₽" />
-                          <input style={{ ...input, flex: 1, minWidth: 0 }} type="date" value={eDeadline} onChange={e => setEDeadline(e.target.value)} />
+                          <input style={{ ...input, flex: 1, minWidth: 0 }} type="number" value={eAmount} onChange={e => setEAmount(e.target.value)} placeholder="Полная сумма, ₽" />
+                          <input style={{ ...input, flex: 1, minWidth: 0 }} type="number" value={ePaid} onChange={e => setEPaid(e.target.value)} placeholder="Оплачено, ₽" />
                         </div>
+                        {+eAmount > 0 && (
+                          <div style={{ fontSize: 12, fontWeight: 700, color: +eAmount - (+ePaid || 0) > 0 ? '#c0392b' : '#2e7d43' }}>
+                            {+eAmount - (+ePaid || 0) > 0 ? `долг подрядчику ${fmt(+eAmount - (+ePaid || 0))} ₽` : '✓ оплачено полностью'}
+                          </div>
+                        )}
+                        <input style={input} type="date" value={eDeadline} onChange={e => setEDeadline(e.target.value)} />
                         <div style={{ display: 'flex', gap: 7 }}>
                           <button onClick={() => saveEdit(t)} style={{ flex: 1, border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '9px 0', fontWeight: 800, fontSize: 13 }}>Сохранить</button>
                           <button onClick={() => setEditId(null)} style={{ border: 'none', background: UI.soft, borderRadius: 999, padding: '9px 14px', fontSize: 13 }}>✕</button>
@@ -151,7 +165,9 @@ function ContractorBoard({ contractors, contractorTasks, db, CONTRACTOR_STAGES, 
                     </div>
                     <div style={{ color: UI.muted, fontSize: 12.5, marginBottom: 10 }}><I n="factory" size={12} /> {cName(t.contractor_id)}{t.comment ? ` · ${t.comment}` : ''}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      {t.amount && <span style={{ background: UI.soft, borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 700 }}>{fmt(t.amount)} ₽</span>}
+                      {t.amount && <span style={{ background: UI.soft, borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 700 }}>всего {fmt(t.amount)} ₽</span>}
+                      {t.amount && debtOf(t) > 0 && <span style={{ background: '#fde3df', color: '#c0392b', borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 700 }}>долг {fmt(debtOf(t))} ₽</span>}
+                      {t.amount && debtOf(t) <= 0 && <span style={{ background: '#e3f2e4', color: '#2e7d43', borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 700 }}>✓ оплачено</span>}
                       {dl && <span className={dl.blink ? 'blink' : undefined} style={{ ...dl.style, borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 700 }}><I n="clock" size={11} /> {dl.text}</span>}
                     </div>
                     <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
@@ -186,9 +202,13 @@ function ContractorBoard({ contractors, contractorTasks, db, CONTRACTOR_STAGES, 
               {contractors.map(c => <option key={c.id} value={c.id}>{c.name} · {c.service}</option>)}
             </select>
             <div style={{ display: 'flex', gap: 10 }}>
-              <input style={{ ...input, flex: 1 }} type="number" placeholder="Сумма, ₽" value={amount} onChange={e => setAmount(e.target.value)} />
-              <input style={{ ...input, flex: 1 }} type="date" value={deadline} onChange={e => setDeadline(e.target.value)} />
+              <input style={{ ...input, flex: 1 }} type="number" placeholder="Полная сумма, ₽" value={amount} onChange={e => setAmount(e.target.value)} />
+              <input style={{ ...input, flex: 1 }} type="number" placeholder="Оплачено, ₽" value={paidNew} onChange={e => setPaidNew(e.target.value)} />
             </div>
+            {+amount > 0 && +amount - (+paidNew || 0) > 0 && (
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#c0392b', marginTop: -4 }}>долг подрядчику повиснет: {fmt(+amount - (+paidNew || 0))} ₽</div>
+            )}
+            <input style={input} type="date" value={deadline} onChange={e => setDeadline(e.target.value)} />
             <input style={input} placeholder="Комментарий" value={comment} onChange={e => setComment(e.target.value)} />
             <button onClick={add} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '14px 0', fontWeight: 800, fontSize: 14 }}>
               Создать
@@ -242,6 +262,7 @@ function ContractorList({ contractors, contractorTasks, tasks, clients, db, UI, 
           const bt = boardTasks(c.id);
           const active = bt.filter(t => t.stage !== 'Забрали').length;
           const sum = bt.reduce((s, t) => s + (t.amount || 0), 0);
+          const debt = bt.reduce((s, t) => s + Math.max(0, (t.amount || 0) - (t.paid || 0)), 0);
           return (
             <div key={c.id} onClick={() => setOpenId(c.id)} style={{ background: '#fff', borderRadius: 22, boxShadow: UI.shadow, padding: 20, cursor: 'pointer' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
@@ -260,6 +281,7 @@ function ContractorList({ contractors, contractorTasks, tasks, clients, db, UI, 
                   в работе: {active}
                 </span>
                 {sum > 0 && <span style={{ background: UI.soft, borderRadius: 999, padding: '4px 10px', fontWeight: 700 }}>{fmt(sum)} ₽</span>}
+                {debt > 0 && <span style={{ background: '#fde3df', color: '#c0392b', borderRadius: 999, padding: '4px 10px', fontWeight: 700 }}>долг {fmt(debt)} ₽</span>}
               </div>
             </div>
           );
@@ -290,6 +312,11 @@ function ContractorList({ contractors, contractorTasks, tasks, clients, db, UI, 
                 <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
                   <span style={{ fontWeight: 600 }}>{t.title}</span>
                   <span style={{ background: UI.soft, borderRadius: 999, padding: '3px 10px', fontSize: 12 }}>{t.stage}</span>
+                  {(t.amount || 0) - (t.paid || 0) > 0 && (
+                    <span style={{ background: '#fde3df', color: '#c0392b', borderRadius: 999, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>
+                      долг {fmt((t.amount || 0) - (t.paid || 0))} ₽
+                    </span>
+                  )}
                   <span style={{ marginLeft: 'auto', fontWeight: 700 }}>{t.amount ? `${fmt(t.amount)} ₽` : ''}</span>
                 </div>
               )) : <div style={{ color: UI.muted, fontSize: 13.5 }}>Задач нет</div>}

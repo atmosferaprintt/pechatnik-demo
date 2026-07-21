@@ -156,7 +156,7 @@ const DEMO_CONTRACTORS = [
 export const CONTRACTOR_STAGES = ['В работе', 'Готово']; // упрощены 2026-07-16 по просьбе Кристи
 
 const DEMO_CONTRACTOR_TASKS = [
-  { id: 1, title: 'Печать баннера 3×6', contractor_id: 1, amount: 3500, deadline: '2026-07-15', stage: 'В работе', task_id: 2, comment: 'Макет отправлен в WhatsApp' },
+  { id: 1, title: 'Печать баннера 3×6', contractor_id: 1, amount: 3500, paid: 2000, deadline: '2026-07-15', stage: 'В работе', task_id: 2, comment: 'Макет отправлен в WhatsApp' },
   { id: 2, title: 'Плёнка Oracal 641 · 2 рулона', contractor_id: 2, amount: 5600, deadline: '2026-07-16', stage: 'В работе', task_id: null, comment: 'Белая матовая + чёрная' },
   { id: 3, title: 'Гравировка ложек ×10', contractor_id: 3, amount: 1800, deadline: '2026-07-14', stage: 'Готово', task_id: null, comment: 'Забрать после 17:00' },
 ];
@@ -326,7 +326,7 @@ export default function App() {
       setCategories(cat.filter(c => c.is_active).sort((a, b) => a.sort - b.sort));
       setBanks(bk.filter(b => b.is_active).sort((a, b) => a.sort - b.sort));
       setContractors(ctr.filter(c => c.is_active));
-      setContractorTasks(ctrT.map(t => ({ ...t, amount: t.amount == null ? null : +t.amount })));
+      setContractorTasks(ctrT.map(t => ({ ...t, amount: t.amount == null ? null : +t.amount, paid: +t.paid || 0 })));
       setTasks(ts.map(t => ({
         ...t, amount: t.amount == null ? null : +t.amount, parts: t.parts || [],
         created_at: dOnly(t.created_at),

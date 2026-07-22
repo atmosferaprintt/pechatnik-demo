@@ -990,7 +990,12 @@ function OwnerView(props) {
             <div key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '7px 0', borderBottom: `1px solid ${UI.line}`, fontSize: 13.5 }}>
               <span style={{ fontWeight: 600 }}>{catName(t.category_id)}</span>
               <span style={{ color: UI.muted, fontSize: 12 }}>{t.comment}</span>
-              <span style={{ marginLeft: 'auto', fontWeight: 700 }}>−{fmt(t.amount)} ₽</span>
+              {/* Правка и удаление — как у операций в ленте (просьба Кристи 2026-07-22) */}
+              <span style={{ marginLeft: 'auto', display: 'flex', gap: 5, alignItems: 'center' }}>
+                <button onClick={() => openTxEdit(t)} title="Исправить" style={{ border: 'none', background: UI.soft, borderRadius: 999, width: 24, height: 24, fontSize: 10, cursor: 'pointer' }}><I n="pencil" size={10} /></button>
+                <button onClick={() => { db.removeTransaction(t); showToast('Запись удалена'); }} title="Удалить" style={{ border: 'none', background: UI.soft, borderRadius: 999, width: 24, height: 24, fontSize: 11, color: UI.muted, cursor: 'pointer' }}>✕</button>
+                <span style={{ fontWeight: 700 }}>−{fmt(t.amount)} ₽</span>
+              </span>
             </div>
           )) : <div style={{ color: UI.muted, fontSize: 13 }}>Без крупных расходов</div>}
         </div>
@@ -1006,7 +1011,11 @@ function OwnerView(props) {
             <div key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '7px 0', borderBottom: `1px solid ${UI.line}`, fontSize: 13.5 }}>
               <span style={{ fontWeight: 600 }}>{t.comment || catName(t.category_id)}</span>
               <span style={{ background: '#fff', borderRadius: 999, padding: '2px 9px', fontSize: 11.5 }}>{mLabel(t.payment_method)}</span>
-              <span style={{ marginLeft: 'auto', fontWeight: 700 }}>−{fmt(t.amount)} ₽</span>
+              <span style={{ marginLeft: 'auto', display: 'flex', gap: 5, alignItems: 'center' }}>
+                <button onClick={() => openTxEdit(t)} title="Исправить" style={{ border: 'none', background: '#fff', borderRadius: 999, width: 24, height: 24, fontSize: 10, cursor: 'pointer' }}><I n="pencil" size={10} /></button>
+                <button onClick={() => { db.removeTransaction(t); showToast('Запись удалена'); }} title="Удалить" style={{ border: 'none', background: '#fff', borderRadius: 999, width: 24, height: 24, fontSize: 11, color: UI.muted, cursor: 'pointer' }}>✕</button>
+                <span style={{ fontWeight: 700 }}>−{fmt(t.amount)} ₽</span>
+              </span>
             </div>
           )) : <div style={{ color: UI.muted, fontSize: 13 }}>Без личных трат</div>}
         </div>

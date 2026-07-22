@@ -334,11 +334,11 @@ export default function App() {
       })));
       setDeposits(dep.map(d => ({
         ...d, total: +d.total, created_at: dOnly(d.created_at),
-        uses: depU.filter(u => u.deposit_id === d.id).map(u => ({ id: u.id, date: u.use_date, what: u.what, amount: +u.amount, task_id: u.task_id })),
+        uses: depU.filter(u => u.deposit_id === d.id).map(u => ({ id: u.id, date: u.use_date, what: u.what, amount: +u.amount, task_id: u.task_id, created_by: nameOf(u.created_by) })),
       })));
       setManualDebts(md.map(d => ({
         ...d,
-        entries: mdE.filter(e => e.debt_id === d.id).map(e => ({ date: e.entry_date, what: e.what, amount: +e.amount })),
+        entries: mdE.filter(e => e.debt_id === d.id).map(e => ({ id: e.id, date: e.entry_date, what: e.what, amount: +e.amount, created_by: nameOf(e.created_by) })),
       })));
       setSupply(sup.map(s => ({ id: s.id, text: s.text, bought: s.bought, author: nameOf(s.created_by), date: dOnly(s.created_at) })));
       setNotes(nts.map(n => ({ ...n, author: nameOf(n.created_by), date: dOnly(n.updated_at || n.created_at) })));
@@ -705,10 +705,11 @@ export default function App() {
     },
 
     async addDepositUse(d, { what, amount, taskId }) {
-      const use = { date: db.today, what, amount, task_id: taskId || null };
+      const use = { date: db.today, what, amount, task_id: taskId || null, created_by: currentUser.name };
       if (!DEMO) {
-        const { error } = await supabase.from('deposit_uses').insert({ deposit_id: d.id, use_date: use.date, what, amount, task_id: use.task_id, created_by: currentUser.id });
+        const { data, error } = await supabase.from('deposit_uses').insert({ deposit_id: d.id, use_date: use.date, what, amount, task_id: use.task_id, created_by: currentUser.id }).select().single();
         if (error) return fail(error);
+        use.id = data.id;
       }
       setDeposits(prev => prev.map(x => x.id === d.id ? { ...x, uses: [...x.uses, use] } : x));
       if (taskId) {
@@ -729,11 +730,59 @@ export default function App() {
     },
 
     async addDebtEntry(d, { what, amount }) {
+      const entry = { date: db.today, what, amount, created_by: currentUser.name };
       if (!DEMO) {
-        const { error } = await supabase.from('manual_debt_entries').insert({ debt_id: d.id, entry_date: db.today, what, amount, created_by: currentUser.id });
+        const { data, error } = await supabase.from('manual_debt_entries').insert({ debt_id: d.id, entry_date: db.today, what, amount, created_by: currentUser.id }).select().single();
+        if (error) return fail(error);
+        entry.id = data.id;
+      }
+      setManualDebts(prev => prev.map(x => x.id === d.id ? { ...x, entries: [...x.entries, entry] } : x));
+      return true;
+    },
+
+    // Правка/удаление строк депозитов и должников — без ограничения по дате (решение Кристи 2026-07-22).
+    // Списание, привязанное к задаче, синхронно правит/удаляет свою транзакцию «оплата с депозита».
+    async updateDepositUse(d, use, patch) { // patch: { what, amount, date }
+      if (!DEMO && use.id) {
+        const { error } = await supabase.from('deposit_uses').update({ what: patch.what, amount: patch.amount, use_date: patch.date }).eq('id', use.id);
         if (error) return fail(error);
       }
-      setManualDebts(prev => prev.map(x => x.id === d.id ? { ...x, entries: [...x.entries, { date: db.today, what, amount }] } : x));
+      if (use.task_id && patch.amount !== use.amount) {
+        const tx = transactions.find(t => t.payment_method === 'deposit' && t.deposit_id === d.id && t.task_id === use.task_id && t.amount === use.amount);
+        if (tx) await db.updateTransaction(tx, { amount: patch.amount });
+      }
+      setDeposits(prev => prev.map(x => x.id === d.id ? { ...x, uses: x.uses.map(u => (use.id ? u.id === use.id : u === use) ? { ...u, ...patch } : u) } : x));
+      return true;
+    },
+
+    async removeDepositUse(d, use) {
+      if (!DEMO && use.id) {
+        const { error } = await supabase.from('deposit_uses').delete().eq('id', use.id);
+        if (error) return fail(error);
+      }
+      if (use.task_id) {
+        const tx = transactions.find(t => t.payment_method === 'deposit' && t.deposit_id === d.id && t.task_id === use.task_id && t.amount === use.amount);
+        if (tx) await db.removeTransaction(tx);
+      }
+      setDeposits(prev => prev.map(x => x.id === d.id ? { ...x, uses: x.uses.filter(u => use.id ? u.id !== use.id : u !== use) } : x));
+      return true;
+    },
+
+    async updateDebtEntry(d, entry, patch) { // patch: { what, amount, date }
+      if (!DEMO && entry.id) {
+        const { error } = await supabase.from('manual_debt_entries').update({ what: patch.what, amount: patch.amount, entry_date: patch.date }).eq('id', entry.id);
+        if (error) return fail(error);
+      }
+      setManualDebts(prev => prev.map(x => x.id === d.id ? { ...x, entries: x.entries.map(e => (entry.id ? e.id === entry.id : e === entry) ? { ...e, ...patch } : e) } : x));
+      return true;
+    },
+
+    async removeDebtEntry(d, entry) {
+      if (!DEMO && entry.id) {
+        const { error } = await supabase.from('manual_debt_entries').delete().eq('id', entry.id);
+        if (error) return fail(error);
+      }
+      setManualDebts(prev => prev.map(x => x.id === d.id ? { ...x, entries: x.entries.filter(e => entry.id ? e.id !== entry.id : e !== entry) } : x));
       return true;
     },
 

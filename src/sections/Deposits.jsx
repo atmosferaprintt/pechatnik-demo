@@ -11,7 +11,7 @@ const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
 const TODAY = localDate();
 const FIN_DAY = '2026-07-14'; // демо-день финансов
 
-export default function Deposits({ deposits, tasks, manualDebts, db, UI, showToast }) {
+export default function Deposits({ deposits, tasks, manualDebts, db, UI, showToast, currentUser, isOwnerAccount }) {
   const [query, setQuery] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState('');
@@ -32,6 +32,51 @@ export default function Deposits({ deposits, tasks, manualDebts, db, UI, showToa
   const [mdAmount, setMdAmount] = useState('');
   const [mdEditId, setMdEditId] = useState(null);
   const [mdEditName, setMdEditName] = useState('');
+  // Правка отдельных строк — списаний депозита и записей должника (просьба Кристи 2026-07-22,
+  // «без ограничений» по дате; менеджер правит свои строки, Кристи — любые)
+  const [rowEdit, setRowEdit] = useState(null); // { kind: 'use'|'entry', dId, row, what, amount, date }
+  const canRow = (row) => isOwnerAccount || !row.created_by || row.created_by === currentUser?.name;
+  const startRowEdit = (kind, d, row) => setRowEdit({ kind, dId: d.id, row, what: row.what || '', amount: String(row.amount), date: row.date });
+  const saveRowEdit = async (d) => {
+    const amount = +rowEdit.amount;
+    if (!amount || (rowEdit.kind === 'use' && amount <= 0)) { showToast('Сумма некорректная', 'error'); return; }
+    const patch = { what: rowEdit.what.trim(), amount, date: rowEdit.date };
+    const ok = rowEdit.kind === 'use'
+      ? await db.updateDepositUse(d, rowEdit.row, patch)
+      : await db.updateDebtEntry(d, rowEdit.row, patch);
+    if (ok) { setRowEdit(null); showToast('Исправлено ✓'); }
+  };
+  const isRowEditing = (kind, d, row) => rowEdit && rowEdit.kind === kind && rowEdit.dId === d.id
+    && (row.id ? rowEdit.row.id === row.id : rowEdit.row === row);
+  // Инлайн-форма правки строки: дата + что + сумма + ОК/отмена (общая для списаний и записей должника)
+  const rowEditForm = (d, hint) => (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '6px 0', flexWrap: 'wrap' }}>
+      <input type="date" value={rowEdit.date} onChange={e => setRowEdit(p => ({ ...p, date: e.target.value }))} style={{
+        padding: '7px 9px', borderRadius: 10, border: `1px solid ${UI.line}`, background: '#fff', fontSize: 12, outline: 'none', width: 125,
+      }} />
+      <input value={rowEdit.what} onChange={e => setRowEdit(p => ({ ...p, what: e.target.value }))} placeholder="Что" style={{
+        flex: 1, minWidth: 110, padding: '7px 11px', borderRadius: 10, border: `1px solid ${UI.line}`, background: '#fff', fontSize: 12.5, outline: 'none',
+      }} />
+      <input type="number" value={rowEdit.amount} onChange={e => setRowEdit(p => ({ ...p, amount: e.target.value }))} placeholder="Сумма" title={hint} style={{
+        width: 84, padding: '7px 9px', borderRadius: 10, border: `1px solid ${UI.line}`, background: '#fff', fontSize: 12.5, outline: 'none',
+      }} />
+      <button onClick={() => saveRowEdit(d)} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '7px 14px', fontWeight: 800, fontSize: 12 }}>ОК</button>
+      <button onClick={() => setRowEdit(null)} style={{ border: 'none', background: '#fff', borderRadius: 999, padding: '7px 11px', fontSize: 12 }}>✕</button>
+    </div>
+  );
+  const rowBtns = (kind, d, row, removeMsg) => canRow(row) && (
+    <span style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+      <button onClick={() => startRowEdit(kind, d, row)} title="Исправить (что, сумма, дата)" style={{
+        border: 'none', background: '#fff', borderRadius: 999, width: 24, height: 24, fontSize: 10, cursor: 'pointer',
+      }}><I n="pencil" size={10} /></button>
+      <button onClick={async () => {
+        const ok = kind === 'use' ? await db.removeDepositUse(d, row) : await db.removeDebtEntry(d, row);
+        if (ok) showToast(removeMsg);
+      }} title="Удалить строку" style={{
+        border: 'none', background: '#fff', borderRadius: 999, width: 24, height: 24, fontSize: 11, color: UI.muted, cursor: 'pointer',
+      }}>✕</button>
+    </span>
+  );
 
   const mdBalance = (d) => d.entries.reduce((s, e) => s + e.amount, 0);
   const mdTotal = manualDebts.reduce((s, d) => s + Math.min(0, mdBalance(d)), 0);
@@ -169,12 +214,17 @@ export default function Deposits({ deposits, tasks, manualDebts, db, UI, showToa
 
               {d.uses.length > 0 && (
                 <div style={{ background: UI.soft, borderRadius: 14, padding: '2px 12px', marginBottom: 10 }}>
-                  {d.uses.map((u, i) => (
-                    <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline', padding: '7px 0', borderBottom: i < d.uses.length - 1 ? `1px solid ${UI.line}` : 'none', fontSize: 13, flexWrap: 'wrap' }}>
+                  {d.uses.map((u, i) => isRowEditing('use', d, u) ? (
+                    <div key={i} style={{ borderBottom: i < d.uses.length - 1 ? `1px solid ${UI.line}` : 'none' }}>{rowEditForm(d, 'Сумма списания')}</div>
+                  ) : (
+                    <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '7px 0', borderBottom: i < d.uses.length - 1 ? `1px solid ${UI.line}` : 'none', fontSize: 13, flexWrap: 'wrap' }}>
                       <span style={{ color: UI.muted, fontSize: 12, width: 40, flexShrink: 0 }}>{dm(u.date)}</span>
                       <span style={{ fontWeight: 600 }}>{u.what}</span>
                       {u.task_id && <span style={{ background: 'rgba(247,214,74,.4)', borderRadius: 999, padding: '1px 8px', fontSize: 11, fontWeight: 700 }}><I n="link" size={10} /> задача</span>}
-                      <span style={{ marginLeft: 'auto', fontWeight: 700, flexShrink: 0 }}>−{fmt(u.amount)} ₽</span>
+                      <span style={{ marginLeft: 'auto', display: 'flex', gap: 5, alignItems: 'center', flexShrink: 0 }}>
+                        {rowBtns('use', d, u, u.task_id ? 'Списание удалено (и его оплата с депозита)' : 'Списание удалено')}
+                        <span style={{ fontWeight: 700 }}>−{fmt(u.amount)} ₽</span>
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -270,12 +320,17 @@ export default function Deposits({ deposits, tasks, manualDebts, db, UI, showToa
                   )}
                 </div>
 
-                {d.entries.map((e, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'baseline', padding: '6px 0', borderBottom: `1px solid ${UI.line}`, fontSize: 13.5 }}>
+                {d.entries.map((e, i) => isRowEditing('entry', d, e) ? (
+                  <div key={i} style={{ borderBottom: `1px solid ${UI.line}` }}>{rowEditForm(d, 'минус = взяла, плюс = оплатила')}</div>
+                ) : (
+                  <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', borderBottom: `1px solid ${UI.line}`, fontSize: 13.5 }}>
                     <span style={{ color: UI.muted, fontSize: 12.5, width: 44, flexShrink: 0 }}>{e.date.slice(8, 10)}.{e.date.slice(5, 7)}</span>
                     <span>{e.what}</span>
-                    <span style={{ marginLeft: 'auto', fontWeight: 700, color: e.amount < 0 ? '#c0392b' : UI.dark }}>
-                      {e.amount < 0 ? '−' : '+'}{fmt(Math.abs(e.amount)).replace(' ₽', '')} ₽
+                    <span style={{ marginLeft: 'auto', display: 'flex', gap: 5, alignItems: 'center' }}>
+                      {rowBtns('entry', d, e, 'Запись удалена')}
+                      <span style={{ fontWeight: 700, color: e.amount < 0 ? '#c0392b' : UI.dark }}>
+                        {e.amount < 0 ? '−' : '+'}{fmt(Math.abs(e.amount)).replace(' ₽', '')} ₽
+                      </span>
                     </span>
                   </div>
                 ))}

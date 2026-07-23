@@ -547,8 +547,17 @@ function EmployeeView(props) {
                   <span style={{ opacity: .75 }}>Осталось в кассе на утро</span>
                   <span style={{ fontWeight: 800, color: '#f7d64a' }}>{fmt(closure.cash_fact - (closure.cash_taken || 0))} ₽</span>
                 </div>
-                <div style={{ marginTop: 10, background: 'rgba(247,214,74,.2)', border: '1px solid #f7d64a', borderRadius: 14, padding: '10px 14px', fontSize: 13.5, fontWeight: 700 }}>
+                <div style={{ marginTop: 10, background: 'rgba(247,214,74,.2)', border: '1px solid #f7d64a', borderRadius: 14, padding: '10px 14px', fontSize: 13.5, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   ✓ Смена закрыта · {closure.closed_by}
+                  {/* Довнесли запись после закрытия — разница пересчитывается по текущим операциям дня */}
+                  <button onClick={async () => {
+                    const nd = closure.cash_fact - cashCalc;
+                    const ok = await db.updateClosure(closure.date, { cash_calc: cashCalc, diff: nd });
+                    if (ok) showToast(nd === 0 ? 'Пересчитано: касса сошлась ✓' : `Пересчитано: разница ${nd > 0 ? '+' : ''}${fmt(nd)} ₽`, nd === 0 ? 'ok' : 'error');
+                  }} style={{
+                    border: 'none', background: UI.accent, color: UI.dark, borderRadius: 999, padding: '5px 12px',
+                    fontWeight: 800, fontSize: 12, marginLeft: 'auto', cursor: 'pointer',
+                  }}><I n="repeat" size={11} /> пересчитать</button>
                 </div>
               </div>
             ) : (
@@ -1042,6 +1051,16 @@ function OwnerView(props) {
               ✓ Смена закрыта · {shiftClosure.closed_by} · факт {fmt(shiftClosure.cash_fact)} ₽
               {(shiftClosure.cash_taken || 0) > 0 && <> · сдано {fmt(shiftClosure.cash_taken)} ₽ · осталось {fmt(shiftClosure.cash_fact - shiftClosure.cash_taken)} ₽</>}
               {' '}· разница {shiftClosure.diff > 0 ? '+' : ''}{fmt(shiftClosure.diff)} ₽
+              {/* Довнесли операцию после закрытия — разницу можно пересчитать по текущим записям дня */}
+              <button onClick={async () => {
+                const calc = carry + cashIn - cashOut;
+                const nd = shiftClosure.cash_fact - calc;
+                const ok = await db.updateClosure(shiftClosure.date, { cash_calc: calc, diff: nd });
+                if (ok) showToast(nd === 0 ? 'Пересчитано: касса сошлась ✓' : `Пересчитано: разница ${nd > 0 ? '+' : ''}${fmt(nd)} ₽`, nd === 0 ? 'ok' : 'error');
+              }} style={{
+                border: 'none', background: UI.accent, color: UI.dark, borderRadius: 999, padding: '5px 12px',
+                fontWeight: 800, fontSize: 12, marginLeft: 8, cursor: 'pointer',
+              }}><I n="repeat" size={11} /> пересчитать</button>
             </div>
           )}
           <div style={{ fontWeight: 800, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>

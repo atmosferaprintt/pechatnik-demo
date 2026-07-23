@@ -429,6 +429,16 @@ export default function App() {
       return db.updateTransaction(t, { op_date: db.yesterday, moved_from: null });
     },
 
+    // Пересчёт разницы уже закрытой смены: наличку довнесли задним числом (просьба Кристи 2026-07-23)
+    async updateClosure(date, patch) { // patch: { cash_calc, diff }
+      if (!DEMO) {
+        const { error } = await supabase.from('day_closures').update({ cash_calc: patch.cash_calc, diff: patch.diff }).eq('close_date', date);
+        if (error) return fail(error);
+      }
+      setDayClosures(prev => prev.map(c => c.date === date ? { ...c, ...patch } : c));
+      return true;
+    },
+
     async closeShift({ date, cash_calc, cash_fact, cash_taken, diff }) {
       if (!DEMO) {
         const { error } = await supabase.from('day_closures').insert({ close_date: date, cash_calc, cash_fact, cash_taken, diff, closed_by: currentUser.id });

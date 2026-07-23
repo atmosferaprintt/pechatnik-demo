@@ -240,6 +240,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(DEMO ? DEMO_USERS.find(u => u.role === 'owner') : null);
   // Кристи работает и как сотрудник: режим «владелец / сотрудник» (интерфейсный, права в БД не меняет)
   const [workMode, setWorkMode] = useState('owner');
+  const [refreshing, setRefreshing] = useState(false); // кнопка «обновить данные» в шапке
   const [tab, setTab] = useState(() => localStorage.getItem('tab') || 'tasks');
   const [toast, setToast] = useState(null);
   // «Записать оплату» из карточки задачи → Финансы с уже привязанной задачей (оплата фиксируется только там)
@@ -930,6 +931,17 @@ export default function App() {
             }}>
               <I n="eye" size={13} /> {isOwnerAccount ? 'Кристи' : currentUser?.name}
             </button>
+          )}
+          {/* Пересчитать вручную: цифры замирают, если realtime-канал отвалился (ноут спал) — просьба Кристи 2026-07-23 */}
+          {!DEMO && (
+            <button onClick={async () => {
+              if (refreshing) return;
+              setRefreshing(true);
+              try { await loadAll(); showToast('Данные обновлены ✓'); } finally { setRefreshing(false); }
+            }} title="Обновить данные и пересчитать все цифры" style={{
+              border: 'none', background: UI.card, borderRadius: 999, width: 34, height: 34, boxShadow: UI.shadow,
+              opacity: refreshing ? 0.4 : 1, cursor: 'pointer', flexShrink: 0,
+            }}><I n="repeat" size={14} /></button>
           )}
           <span style={{ display: 'flex', alignItems: 'center', gap: 8, background: UI.card, borderRadius: 999, padding: isMobile ? 4 : '7px 14px 7px 7px', boxShadow: UI.shadow, fontSize: 13 }}>
             <span style={{ width: 30, height: 30, borderRadius: '50%', background: UI.dark, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13 }}>

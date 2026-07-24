@@ -5,9 +5,10 @@ services:
     build:
       context: .
       args:
-        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-http://159.194.213.28}
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-origin}
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
     container_name: pechatnik-web
     ports:
-      - "80:80"
+      # 80/443 снаружи занимает Caddy (HTTPS для crm.pechatnik-cherkessk.ru) и проксирует сюда
+      - "127.0.0.1:8080:80"
     restart: unless-stopped

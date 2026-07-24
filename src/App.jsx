@@ -18,7 +18,10 @@ import Notes from './sections/Notes.jsx';
 import Analytics from './sections/Analytics.jsx';
 import Settings from './sections/Settings.jsx';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+// 'origin' — Supabase на том же адресе, что и CRM (nginx проксирует /auth|/rest|/realtime|…):
+// одна сборка работает и по http://IP, и по https://crm.pechatnik-cherkessk.ru
+const RAW_SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_URL = RAW_SUPABASE_URL === 'origin' ? window.location.origin : RAW_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = SUPABASE_URL && SUPABASE_ANON_KEY ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 const DEMO = !supabase;

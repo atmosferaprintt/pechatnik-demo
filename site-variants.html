@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Сайт типографии ПЕЧАТНИК — варианты каркаса</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f6f3ec; --bg2:#fdf6dd; --card:#ffffff; --soft:#faf8f2;
+    --accent:#f7d64a; --dark:#1d1d1f; --muted:#8a8a85; --line:#e8e4d9;
+    --shadow:0 8px 24px rgba(0,0,0,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:'Manrope',system-ui,sans-serif;
+    background:linear-gradient(135deg,var(--bg) 0%,var(--bg) 55%,var(--bg2) 100%);
+    color:var(--dark); min-height:100vh; padding:40px 24px 80px;
+  }
+  .wrap{max-width:1500px;margin:0 auto}
+  .head{max-width:860px;margin:0 auto 44px;text-align:center}
+  .head h1{font-size:38px;font-weight:600;letter-spacing:-.5px;margin-bottom:12px}
+  .head p{color:var(--muted);font-size:15px;line-height:1.65}
+  .head .note{display:inline-block;margin-top:16px;background:var(--dark);color:#fff;border-radius:999px;padding:10px 22px;font-size:13px}
+  .head .note b{color:var(--accent)}
+
+  .variants{display:flex;flex-wrap:wrap;gap:44px;justify-content:center;align-items:flex-start}
+  .variant{width:680px;max-width:100%}
+  .v-head{margin-bottom:16px;padding:0 6px}
+  .v-num{display:inline-block;background:var(--accent);border-radius:999px;padding:6px 16px;font-size:13px;font-weight:800;margin-bottom:10px}
+  .v-head h2{font-size:22px;font-weight:600;margin-bottom:6px}
+  .v-head p{font-size:13.5px;color:var(--muted);line-height:1.6}
+  .v-pm{margin-top:8px;font-size:12.5px;line-height:1.7}
+
+  /* браузерная рамка */
+  .browser{background:#e3e0d7;border-radius:18px;padding:10px 10px 0;box-shadow:0 24px 48px rgba(0,0,0,.14)}
+  .b-bar{display:flex;align-items:center;gap:8px;padding:2px 6px 10px}
+  .b-dots{display:flex;gap:5px}
+  .b-dots span{width:10px;height:10px;border-radius:50%;background:#c9c5ba}
+  .b-url{flex:1;background:#f6f3ec;border-radius:999px;padding:6px 14px;font-size:11.5px;color:var(--muted);text-align:center}
+  .screen{background:#fff;border-radius:12px 12px 0 0;height:760px;overflow-y:auto;scrollbar-width:thin}
+
+  /* общие элементы макетов */
+  .s-nav{display:flex;align-items:center;gap:14px;padding:16px 26px;border-bottom:1px solid var(--line);position:sticky;top:0;background:#fff;z-index:5}
+  .s-logo{font-weight:800;font-size:16px;letter-spacing:-.2px}
+  .s-links{display:flex;gap:14px;font-size:12px;color:var(--muted);font-weight:600}
+  .s-cta{margin-left:auto;background:var(--dark);color:#fff;border-radius:999px;padding:8px 16px;font-size:12px;font-weight:700}
+  .s-cta.wa{background:#2e7d43}
+  .sec{padding:26px}
+  .sec h3{font-size:19px;font-weight:800;margin-bottom:4px}
+  .sec .sub{color:var(--muted);font-size:12.5px;margin-bottom:14px}
+  .grid{display:grid;gap:10px}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  .svc{background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:12px;font-size:12px;font-weight:700}
+  .svc .pr{display:block;color:var(--muted);font-weight:600;font-size:11px;margin-top:3px}
+  .ph{background:repeating-linear-gradient(45deg,#efece3,#efece3 8px,#f6f3ec 8px,#f6f3ec 16px);border-radius:12px;display:flex;align-items:center;justify-content:center;color:#b7b3a6;font-size:11px;font-weight:700}
+  .foot-sec{background:var(--dark);color:#fff;padding:24px 26px;font-size:12px}
+  .foot-sec b{color:var(--accent)}
+  .chip{display:inline-block;background:rgba(247,214,74,.35);border-radius:999px;padding:4px 12px;font-size:11px;font-weight:800}
+  .btn-y{display:inline-block;background:var(--accent);border-radius:999px;padding:11px 22px;font-weight:800;font-size:13px}
+  .btn-d{display:inline-block;background:var(--dark);color:#fff;border-radius:999px;padding:11px 22px;font-weight:800;font-size:13px}
+
+  .compare{max-width:1100px;margin:70px auto 0}
+  .compare h2{font-size:28px;font-weight:600;text-align:center;margin-bottom:22px}
+  .compare table{width:100%;border-collapse:separate;border-spacing:0;background:var(--card);border-radius:22px;box-shadow:var(--shadow);overflow:hidden;font-size:13.5px}
+  .compare th{background:var(--dark);color:#fff;padding:13px 18px;text-align:left;font-weight:600}
+  .compare td{padding:13px 18px;border-top:1px solid var(--line);vertical-align:top;line-height:1.55}
+  .compare td:first-child{font-weight:800;white-space:nowrap}
+  .qs{max-width:1100px;margin:36px auto 0;background:var(--card);border-radius:22px;box-shadow:var(--shadow);padding:26px 30px}
+  .qs h3{font-size:18px;margin-bottom:10px}
+  .qs li{margin:7px 0 7px 18px;font-size:14px;line-height:1.6}
+  .qs .hint{color:var(--muted);font-size:12.5px;margin-top:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="head">
+    <h1>Сайт типографии ПЕЧАТНИК</h1>
+    <p>Четыре варианта каркаса для <b>pechatnik-cherkessk.ru</b>. Тексты, цены и телефоны — условные, фото — заглушки: выбираем <b>структуру и настроение</b>, наполнение соберём с Кристи после выбора. Каждый макет листается внутри своей рамки.</p>
+    <div class="note"><b>4 варианта</b> · фирменная гамма ПЕЧАТНИК · варианты можно смешивать</div>
+  </div>
+
+  <div class="variants">
+
+  <!-- ═══════ ВАРИАНТ 1 · КЛАССИКА ═══════ -->
+  <div class="variant">
+    <div class="v-head">
+      <span class="v-num">Вариант 1</span>
+      <h2>«Классика» — полный лендинг</h2>
+      <p>Обычный порядок хорошего сайта услуг: обещание сверху, услуги, как заказать, работы, контакты. Солидно, «как у больших», хорошо для поисковиков.</p>
+      <div class="v-pm"><b>+</b> закрывает все вопросы клиента за один скролл, легко расширять<br><b>−</b> самый длинный: нужно больше текстов и фото от Кристи</div>
+    </div>
+    <div class="browser">
+      <div class="b-bar"><span class="b-dots"><span></span><span></span><span></span></span><span class="b-url">pechatnik-cherkessk.ru</span></div>
+      <div class="screen">
+        <div class="s-nav"><span class="s-logo">⬛ ПЕЧАТНИК</span><span class="s-links"><span>Услуги</span><span>Работы</span><span>Контакты</span></span><span class="s-cta wa">Написать в WhatsApp</span></div>
+        <div class="sec" style="background:linear-gradient(160deg,#fdf6dd,#fff);text-align:center;padding:44px 30px">
+          <span class="chip">типография в Черкесске</span>
+          <h3 style="font-size:30px;margin:12px 0 8px;letter-spacing:-.5px">Напечатаем всё —<br>от визитки до баннера 3×6</h3>
+          <p style="color:var(--muted);font-size:13px;margin-bottom:18px">Свои станки, живая очередь в WhatsApp, срочные заказы — день в день</p>
+          <span class="btn-y">Узнать цену в WhatsApp</span>&nbsp;&nbsp;<span class="btn-d">Позвонить</span>
+        </div>
+        <div class="sec">
+          <h3>Что печатаем</h3><div class="sub">цены — от, точный расчёт по макету</div>
+          <div class="grid g3">
+            <div class="svc">Визитки<span class="pr">от 2 ₽/шт</span></div>
+            <div class="svc">Листовки и буклеты<span class="pr">от 4 ₽/шт</span></div>
+            <div class="svc">Баннеры и широкоформат<span class="pr">от 450 ₽/м²</span></div>
+            <div class="svc">УФ и ДТФ печать<span class="pr">на чём угодно</span></div>
+            <div class="svc">Кружки, футболки, сувениры<span class="pr">от 350 ₽</span></div>
+            <div class="svc">Ленты, бирки, наклейки<span class="pr">от 3 ₽/шт</span></div>
+            <div class="svc">Фото на документы<span class="pr">300 ₽</span></div>
+            <div class="svc">Грамоты и сертификаты<span class="pr">от 30 ₽</span></div>
+            <div class="svc">Ксерокс, сканирование, ламинация<span class="pr">от 10 ₽</span></div>
+          </div>
+        </div>
+        <div class="sec" style="background:var(--soft)">
+          <h3>Как заказать</h3><div class="sub">чаще всего — просто пишут в WhatsApp</div>
+          <div class="grid g3" style="font-size:12px;line-height:1.5">
+            <div><b style="font-size:20px;color:#c9a400">1</b><br><b>Напишите или позвоните</b><br>что нужно и сколько</div>
+            <div><b style="font-size:20px;color:#c9a400">2</b><br><b>Согласуем макет и цену</b><br>поможем с макетом, если его нет</div>
+            <div><b style="font-size:20px;color:#c9a400">3</b><br><b>Заберите заказ</b><br>или закажите доставку</div>
+          </div>
+        </div>
+        <div class="sec">
+          <h3>Наши работы</h3><div class="sub">фото из цеха — сюда встанут реальные</div>
+          <div class="grid g3">
+            <div class="ph" style="height:90px">фото · баннер</div><div class="ph" style="height:90px">фото · визитки</div><div class="ph" style="height:90px">фото · кружки</div>
+            <div class="ph" style="height:90px">фото · футболки</div><div class="ph" style="height:90px">фото · наклейки</div><div class="ph" style="height:90px">фото · грамоты</div>
+          </div>
+        </div>
+        <div class="foot-sec">
+          <b style="font-size:15px">ПЕЧАТНИК</b> · типография<br><br>
+          г. Черкесск, ул. Примерная, 1 · пн–сб 9:00–18:00<br>
+          +7 928 000-00-00 · WhatsApp · Instagram<br><br>
+          <span class="ph" style="height:80px;display:flex;background:rgba(255,255,255,.08);color:#8a8a85">карта проезда</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ ВАРИАНТ 2 · ПРАЙС ═══════ -->
+  <div class="variant">
+    <div class="v-head">
+      <span class="v-num">Вариант 2</span>
+      <h2>«Прайс-первый» — сразу к ценам</h2>
+      <p>Люди ищут типографию ради цены и срока. Здесь прайс — главный экран: услуги с ценами и кнопкой «заказать» у каждой. Минимум лирики.</p>
+      <div class="v-pm"><b>+</b> самый «продающий»: цена и кнопка на расстоянии одного взгляда<br><b>−</b> цены надо держать актуальными, иначе сайт врёт</div>
+    </div>
+    <div class="browser">
+      <div class="b-bar"><span class="b-dots"><span></span><span></span><span></span></span><span class="b-url">pechatnik-cherkessk.ru</span></div>
+      <div class="screen">
+        <div class="s-nav"><span class="s-logo">⬛ ПЕЧАТНИК</span><span class="s-links"><span>Цены</span><span>Контакты</span></span><span class="s-cta wa">WhatsApp</span></div>
+        <div class="sec" style="padding-bottom:10px">
+          <h3 style="font-size:24px">Цены на печать в Черкесске</h3>
+          <div class="sub">актуальные · точный расчёт по макету в WhatsApp за 5 минут</div>
+        </div>
+        <div class="sec" style="padding-top:0">
+          <div class="grid" style="grid-template-columns:1fr">
+            <div class="svc" style="display:flex;align-items:center;gap:10px;padding:14px"><span>Визитки 500 шт, 4+4</span><span style="margin-left:auto;font-size:15px">от 900 ₽</span><span class="btn-y" style="padding:7px 14px;font-size:11px">заказать</span></div>
+            <div class="svc" style="display:flex;align-items:center;gap:10px;padding:14px"><span>Листовки А6, 1000 шт</span><span style="margin-left:auto;font-size:15px">от 2 900 ₽</span><span class="btn-y" style="padding:7px 14px;font-size:11px">заказать</span></div>
+            <div class="svc" style="display:flex;align-items:center;gap:10px;padding:14px"><span>Баннер с люверсами, м²</span><span style="margin-left:auto;font-size:15px">от 450 ₽</span><span class="btn-y" style="padding:7px 14px;font-size:11px">заказать</span></div>
+            <div class="svc" style="display:flex;align-items:center;gap:10px;padding:14px"><span>Кружка с фото</span><span style="margin-left:auto;font-size:15px">от 350 ₽</span><span class="btn-y" style="padding:7px 14px;font-size:11px">заказать</span></div>
+            <div class="svc" style="display:flex;align-items:center;gap:10px;padding:14px"><span>Футболка ДТФ</span><span style="margin-left:auto;font-size:15px">от 700 ₽</span><span class="btn-y" style="padding:7px 14px;font-size:11px">заказать</span></div>
+            <div class="svc" style="display:flex;align-items:center;gap:10px;padding:14px"><span>Фото на документы</span><span style="margin-left:auto;font-size:15px">300 ₽</span><span class="btn-y" style="padding:7px 14px;font-size:11px">заказать</span></div>
+            <div class="svc" style="display:flex;align-items:center;gap:10px;padding:14px"><span>Наклейки на прозрачке, 35 шт</span><span style="margin-left:auto;font-size:15px">от 500 ₽</span><span class="btn-y" style="padding:7px 14px;font-size:11px">заказать</span></div>
+            <div class="svc" style="display:flex;align-items:center;gap:10px;padding:14px"><span>Ксерокс / скан / ламинация</span><span style="margin-left:auto;font-size:15px">от 10 ₽</span><span class="btn-y" style="padding:7px 14px;font-size:11px">заказать</span></div>
+          </div>
+          <div style="text-align:center;color:var(--muted);font-size:12px;padding:14px">…полный прайс раскрывается по разделам: полиграфия · широкоформат · сувениры · документы</div>
+        </div>
+        <div class="sec" style="background:var(--soft);display:flex;gap:14px;align-items:center">
+          <div style="flex:1"><b>Не нашли своё?</b><br><span style="font-size:12px;color:var(--muted)">Пришлите фото или описание — посчитаем</span></div>
+          <span class="btn-d">Спросить в WhatsApp</span>
+        </div>
+        <div class="foot-sec">г. Черкесск, ул. Примерная, 1 · пн–сб 9:00–18:00 · +7 928 000-00-00</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ ВАРИАНТ 3 · ВИЗИТКА ═══════ -->
+  <div class="variant">
+    <div class="v-head">
+      <span class="v-num">Вариант 3</span>
+      <h2>«Визитка» — один экран, без скролла</h2>
+      <p>Сайт-визитка: адрес, часы, телефон, две большие кнопки и список услуг строкой. Открыл — за 5 секунд понял, куда идти и куда писать.</p>
+      <div class="v-pm"><b>+</b> делается и обновляется за вечер, ничего не устаревает<br><b>−</b> не расскажет подробностей и не покажет работы</div>
+    </div>
+    <div class="browser">
+      <div class="b-bar"><span class="b-dots"><span></span><span></span><span></span></span><span class="b-url">pechatnik-cherkessk.ru</span></div>
+      <div class="screen" style="display:flex;flex-direction:column;overflow:hidden">
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px;background:linear-gradient(160deg,#fdf6dd,#fff)">
+          <div style="width:74px;height:74px;border-radius:22px;background:var(--dark);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:800;margin-bottom:16px">П</div>
+          <h3 style="font-size:28px;letter-spacing:-.5px">Типография ПЕЧАТНИК</h3>
+          <p style="color:var(--muted);font-size:13px;margin:6px 0 4px">Визитки · листовки · баннеры · УФ/ДТФ · сувениры · фото на документы</p>
+          <p style="font-size:13px;font-weight:700;margin-bottom:18px">г. Черкесск, ул. Примерная, 1 · пн–сб 9:00–18:00</p>
+          <div><span class="btn-y" style="font-size:14px;padding:13px 26px">Написать в WhatsApp</span>&nbsp;&nbsp;<span class="btn-d" style="font-size:14px;padding:13px 26px">+7 928 000-00-00</span></div>
+          <p style="color:var(--muted);font-size:11.5px;margin-top:16px">Instagram: @pechatnik_cherkessk · 2ГИС · Яндекс Карты</p>
+        </div>
+        <div class="foot-sec" style="display:flex;gap:10px;align-items:center;justify-content:center;font-size:11.5px">
+          <span class="chip" style="background:rgba(247,214,74,.25);color:var(--accent)">срочная печать — день в день</span>
+          <span class="chip" style="background:rgba(247,214,74,.25);color:var(--accent)">работаем с организациями</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ ВАРИАНТ 4 · ВИТРИНА ═══════ -->
+  <div class="variant">
+    <div class="v-head">
+      <span class="v-num">Вариант 4</span>
+      <h2>«Витрина» — работы вперёд</h2>
+      <p>Главный экран — сетка живых фото из цеха, как лента Instagram. Продаёт картинкой: «хочу так же». Услуги и контакты — вторым экраном.</p>
+      <div class="v-pm"><b>+</b> самый эмоциональный, идеально для перехода из Instagram<br><b>−</b> требует регулярных хороших фото — иначе витрина пустеет</div>
+    </div>
+    <div class="browser">
+      <div class="b-bar"><span class="b-dots"><span></span><span></span><span></span></span><span class="b-url">pechatnik-cherkessk.ru</span></div>
+      <div class="screen">
+        <div class="s-nav"><span class="s-logo">⬛ ПЕЧАТНИК</span><span class="s-links"><span>Работы</span><span>Услуги</span><span>Контакты</span></span><span class="s-cta wa">WhatsApp</span></div>
+        <div class="sec" style="padding-bottom:8px">
+          <h3 style="font-size:24px">Сделано у нас на этой неделе</h3>
+          <div class="sub">нажмите на фото — узнаете, сколько это стоит</div>
+        </div>
+        <div class="sec" style="padding-top:0">
+          <div class="grid g3">
+            <div class="ph" style="height:120px">баннер 3×6<br>«Автосервис»</div>
+            <div class="ph" style="height:120px">визитки маникюр<br>чёрный глянец</div>
+            <div class="ph" style="height:120px">кружки с фото<br>×3</div>
+            <div class="ph" style="height:120px">футболки ДТФ<br>для команды</div>
+            <div class="ph" style="height:120px">наклейки<br>«Сара Пекарня»</div>
+            <div class="ph" style="height:120px">грамоты А4<br>для министерства</div>
+            <div class="ph" style="height:120px">меню в ламинации<br>кафе «Бархат»</div>
+            <div class="ph" style="height:120px">бирки нейлон<br>2,5×7 см</div>
+            <div class="ph" style="height:120px">стенд<br>«Ветераны»</div>
+          </div>
+        </div>
+        <div class="sec" style="background:var(--soft)">
+          <h3>Повторим для вас</h3><div class="sub">все услуги — одной строкой</div>
+          <div style="font-size:12.5px;line-height:2">
+            <span class="chip">визитки</span> <span class="chip">листовки</span> <span class="chip">буклеты</span> <span class="chip">баннеры</span> <span class="chip">УФ печать</span> <span class="chip">ДТФ</span> <span class="chip">кружки</span> <span class="chip">футболки</span> <span class="chip">наклейки</span> <span class="chip">бирки</span> <span class="chip">грамоты</span> <span class="chip">фото на документы</span> <span class="chip">ламинация</span> <span class="chip">ксерокс</span>
+          </div>
+        </div>
+        <div class="foot-sec">г. Черкесск, ул. Примерная, 1 · пн–сб 9:00–18:00 · +7 928 000-00-00 · <b>WhatsApp</b> · Instagram</div>
+      </div>
+    </div>
+  </div>
+
+  </div><!-- /variants -->
+
+  <div class="compare">
+    <h2>Сравнение</h2>
+    <table>
+      <tr><th>Вариант</th><th>Главный экран</th><th>Сильная сторона</th><th>Что потребуется от Кристи</th></tr>
+      <tr><td>1 · Классика</td><td>Обещание + кнопка WhatsApp</td><td>Полный сайт «как у больших», хорош для поиска в Яндексе</td><td>Тексты об услугах, 6–9 фото, цены «от»</td></tr>
+      <tr><td>2 · Прайс</td><td>Список цен с кнопками</td><td>Отвечает на главный вопрос клиента сразу</td><td>Актуальный прайс и дисциплина его обновлять</td></tr>
+      <tr><td>3 · Визитка</td><td>Контакты и две кнопки</td><td>Запускается за вечер, ничего не устаревает</td><td>Только адрес, часы, телефон</td></tr>
+      <tr><td>4 · Витрина</td><td>Сетка фото работ</td><td>Продаёт эмоцией, родной для аудитории из Instagram</td><td>Постоянный поток хороших фото из цеха</td></tr>
+    </table>
+  </div>
+
+  <div class="qs">
+    <h3>Открытые вопросы (решаем после выбора)</h3>
+    <ul>
+      <li><b>Смешивание.</b> Хорошо дружат 1+4 (классика с большой секцией работ) и 3→1 (запустить визитку за вечер, дорастить до классики).</li>
+      <li><b>Контент от Кристи:</b> точный адрес и часы, телефон/WhatsApp, Instagram, фото работ, цены «от».</li>
+      <li><b>Хостинг:</b> корень домена уже смотрит на хостинг Beget — сайт можно положить туда; либо перевести корень на наш VPS. Технически готовы к обоим.</li>
+      <li><b>Кнопка «Заказать» → WhatsApp</b> с готовым текстом («Здравствуйте! Хочу заказать…») — самый короткий путь клиента, рекомендую в любом варианте.</li>
+    </ul>
+    <div class="hint">Все тексты, цены и телефоны на макетах — условные, для ощущения структуры. Сайт будет адаптивным (телефон/компьютер) в любом варианте.</div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -49,9 +49,11 @@ export default function Clients({ clients, tasks, transactions, categories, db, 
     const taskIds = new Set(clientTasks(id).map(t => t.id));
     return transactions.filter(t => t.type === 'income' && (t.client_id === id || taskIds.has(t.task_id)));
   };
-  const paidByTask = (taskId) => transactions.filter(t => t.task_id === taskId && t.type === 'income').reduce((s, t) => s + t.amount, 0);
-  const clientDebt = (id) => clientTasks(id).reduce((s, t) => s + Math.max(0, (t.amount || 0) - paidByTask(t.id)), 0);
-  const clientTotal = (id) => clientPayments(id).reduce((s, t) => s + t.amount, 0);
+  // hidden_paid — оплаты вне RLS-окна сотрудницы (App.jsx/018), без него старые оплаты «слетали»
+  const paidByTask = (t) => (t.hidden_paid || 0) + transactions.filter(x => x.task_id === t.id && x.type === 'income').reduce((s, x) => s + x.amount, 0);
+  const clientDebt = (id) => clientTasks(id).reduce((s, t) => s + Math.max(0, (t.amount || 0) - paidByTask(t)), 0);
+  const clientTotal = (id) => clientPayments(id).reduce((s, t) => s + t.amount, 0)
+    + clientTasks(id).reduce((s, t) => s + (t.hidden_paid || 0), 0);
   const catName = (id) => categories.find(c => c.id === id)?.name || '?';
 
   const filtered = clients.filter(c =>
@@ -217,7 +219,7 @@ export default function Clients({ clients, tasks, transactions, categories, db, 
 
               <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Задачи</div>
               {ct.length ? ct.map(t => {
-                const d = Math.max(0, (t.amount || 0) - paidByTask(t.id));
+                const d = Math.max(0, (t.amount || 0) - paidByTask(t));
                 return (
                   <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
                     <span style={{ fontWeight: 600 }}>{t.title}</span>

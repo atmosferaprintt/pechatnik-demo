@@ -87,9 +87,10 @@ function OwnerDash({ transactions, tasks, clients, categories, dayClosures, demo
   const income = dayTx.filter(t => t.type === 'income' && t.payment_method !== 'deposit').reduce((s, t) => s + t.amount, 0);
   const expense = dayTx.filter(t => t.type === 'expense' && kindOf(t) !== 'expense_personal').reduce((s, t) => s + t.amount, 0);
 
-  const paidByTask = (id) => transactions.filter(t => t.task_id === id && t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  // hidden_paid — оплаты вне RLS-окна сотрудницы (App.jsx/018), без него старые оплаты «слетали»
+  const paidByTask = (t) => (t.hidden_paid || 0) + transactions.filter(x => x.task_id === t.id && x.type === 'income').reduce((s, x) => s + x.amount, 0);
   const debtors = tasks
-    .map(t => ({ ...t, debt: (t.amount || 0) - paidByTask(t.id) }))
+    .map(t => ({ ...t, debt: (t.amount || 0) - paidByTask(t) }))
     .filter(t => t.debt > 0)
     .sort((a, b) => b.debt - a.debt);
   const totalDebt = debtors.reduce((s, t) => s + t.debt, 0);

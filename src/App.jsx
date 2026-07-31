@@ -315,6 +315,13 @@ export default function App() {
         loadAllRows('notes'),
       ]);
       const txLog = await loadAllRows('transaction_log');
+      // «Оплачено» по задачам, которое сотруднице не видно построчно (RLS-окно 7 дней, 016):
+      // без этого оплаты старше недели «слетали» и долг возвращался (жалобы 2026-07-31).
+      // Функция 018 отдаёт только итог по задаче; у владельца — пусто (он видит всё сам).
+      const { data: hidRows, error: hidErr } = await supabase.rpc('task_paid_hidden');
+      if (hidErr) throw hidErr;
+      const hidPaid = {};
+      (hidRows || []).forEach(r => { hidPaid[r.task_id] = { paid: +r.paid || 0, cnt: r.cnt || 0 }; });
       const { data: qo } = await supabase.from('app_settings').select('value').eq('key', 'quick_ops').maybeSingle();
       setQuickOps(Array.isArray(qo?.value) ? qo.value : []);
 
@@ -333,6 +340,7 @@ export default function App() {
       setContractorTasks(ctrT.map(t => ({ ...t, amount: t.amount == null ? null : +t.amount, paid: +t.paid || 0 })));
       setTasks(ts.map(t => ({
         ...t, amount: t.amount == null ? null : +t.amount, parts: t.parts || [],
+        hidden_paid: hidPaid[t.id]?.paid || 0, hidden_cnt: hidPaid[t.id]?.cnt || 0,
         created_at: dOnly(t.created_at),
         log: logs.filter(l => l.task_id === t.id).map(l => ({ who: l.who, action: l.action, time: logT(l.created_at) })),
       })));

@@ -16,8 +16,9 @@ const fmt = (n) => (n || 0).toLocaleString('ru-RU');
 // Оплачено/долг по задаче — нужно и форме новой оплаты, и модалкам правки записей:
 // завершённая задача с долгом должна выбираться и при привязке оплаты задним числом
 // («оплата по долгу пришла раньше, записали без задачи — теперь не привязать», Кристи 2026-07-21)
-const paidOfTask = (transactions, id) => transactions.filter(x => x.task_id === id && x.type === 'income').reduce((s, x) => s + x.amount, 0);
-const debtOfTask = (transactions, t) => (t.amount || 0) - paidOfTask(transactions, t.id);
+// hidden_paid — оплаты вне RLS-окна сотрудницы (App.jsx/018), без него старые оплаты «слетали»
+const paidOfTask = (transactions, t) => (t.hidden_paid || 0) + transactions.filter(x => x.task_id === t.id && x.type === 'income').reduce((s, x) => s + x.amount, 0);
+const debtOfTask = (transactions, t) => (t.amount || 0) - paidOfTask(transactions, t);
 // Подпись задачи в селектах привязки: «Баннер 3×6 · долг 12 000 ₽ (выдана)»
 const taskOptionLabel = (transactions, t) => {
   const debt = debtOfTask(transactions, t);
@@ -73,7 +74,7 @@ function EntryForm({ categories, banks, tasks, clients, transactions, db, PAYMEN
   });
   // К оплате можно привязать открытые задачи + выданные с долгом (долг гасится тоже отсюда).
   // Долговые — вниз списка единым блоком («чтобы легче найти», Кристи 2026-07-21)
-  const paidOf = (id) => paidOfTask(transactions, id);
+  const paidOf = (t) => paidOfTask(transactions, t);
   const taskDebt = (t) => debtOfTask(transactions, t);
   const linkTasks = tasks.filter(t => !t.done || taskDebt(t) > 0)
     .sort((a, b) => (taskDebt(a) > 0) - (taskDebt(b) > 0));
@@ -207,7 +208,7 @@ function EntryForm({ categories, banks, tasks, clients, transactions, db, PAYMEN
             // Мини-счёт по выбранной задаче + предупреждение, если вносят больше долга
             const t = tasks.find(x => x.id === +taskId);
             if (!t) return null;
-            const paid = paidOf(t.id);
+            const paid = paidOf(t);
             const debt = (t.amount || 0) - paid;
             const over = total > 0 && total > debt;
             // Разбивка оплаты по составу заказа: статьи из parts, категория подбирается по имени части.

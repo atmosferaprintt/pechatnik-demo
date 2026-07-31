@@ -62,7 +62,10 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
   const clientShort = (id) => client(id)?.name?.split('·')[0]?.trim() || '—';
 
   const payments = (taskId) => transactions.filter(t => t.task_id === taskId && t.type === 'income');
-  const paidSum = (taskId) => payments(taskId).reduce((s, p) => s + p.amount, 0);
+  // Итог «оплачено» = видимые строки + hidden_paid (оплаты вне RLS-окна сотрудницы, App.jsx/018) —
+  // иначе оплаты старше недели «слетали» и долг возвращался (жалобы 2026-07-31)
+  const paidSum = (taskId) => (tasks.find(x => x.id === taskId)?.hidden_paid || 0)
+    + payments(taskId).reduce((s, p) => s + p.amount, 0);
   const catName = (id) => categories.find(c => c.id === id)?.name || '?';
   // Части состава заказа выбираются из категорий доходов (просьба Кристи 2026-07-21) —
   // тогда «разбить по составу» в форме оплаты попадает в категории автоматически
@@ -538,7 +541,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
         const t = tasks.find(x => x.id === openTask.id) || openTask;
         const c = client(t.client_id);
         const paid = payments(t.id);
-        const paidTotal = paid.reduce((s, p) => s + p.amount, 0);
+        const paidTotal = paid.reduce((s, p) => s + p.amount, 0) + (t.hidden_paid || 0);
         const debt = (t.amount || 0) - paidTotal;
         const dlStatus = deadlineStatus(t);
         return (
@@ -674,7 +677,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                   чужие — одной строкой без деталей, итог и долг остаются в графе «Оплата» */}
               {(() => {
                 const visiblePaid = isOwnerAccount ? paid : paid.filter(p => p.created_by === currentUser.name);
-                const hiddenCnt = paid.length - visiblePaid.length;
+                const hiddenCnt = paid.length - visiblePaid.length + (t.hidden_cnt || 0);
                 return (
                   <>
                     {visiblePaid.map(p => (
@@ -687,17 +690,17 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                     ))}
                     {hiddenCnt > 0 && (
                       <div style={{ color: UI.muted, fontSize: 13, padding: '9px 2px' }}>
-                        + {hiddenCnt} оплат{hiddenCnt === 1 ? 'а' : ''} других сотрудниц — итог в графе «Оплата»
+                        + {hiddenCnt} оплат{hiddenCnt === 1 ? 'а' : ''} (других сотрудниц или старше недели) — итог в графе «Оплата»
                       </div>
                     )}
-                    {!paid.length && (
+                    {!paid.length && !(t.hidden_cnt || 0) && (
                       <div style={{ color: UI.muted, fontSize: 13.5 }}>Оплат пока нет — записываются в Финансах с привязкой к задаче</div>
                     )}
                   </>
                 );
               })()}
               {/* Мини-счёт: заказ − оплачено = долг / переплата. Оплаты живут в Финансах и при правке задачи не трогаются */}
-              {paid.length > 0 && (
+              {(paid.length > 0 || (t.hidden_cnt || 0) > 0) && (
                 <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', padding: '10px 2px 2px', fontSize: 13.5 }}>
                   <span style={{ fontWeight: 800 }}>Итого оплачено {fmt(paidTotal)}</span>
                   <span style={{ marginLeft: 'auto', fontWeight: 700, color: debt > 0 ? '#c0392b' : t.amount > 0 && debt < 0 ? '#8a5a00' : UI.muted }}>

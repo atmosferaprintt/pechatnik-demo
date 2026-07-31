@@ -322,6 +322,11 @@ export default function App() {
       if (hidErr) throw hidErr;
       const hidPaid = {};
       (hidRows || []).forEach(r => { hidPaid[r.task_id] = { paid: +r.paid || 0, cnt: r.cnt || 0 }; });
+      // Переносы кассы по закрытиям, невидимым сотруднице (RLS «сегодня+вчера», 002):
+      // при закрытии вчерашней смены наутро позавчерашнее закрытие выпадало из окна,
+      // перенос «утро» обнулялся и касса «не сходилась» (смена 30.07, функция 019)
+      const { data: carryRows, error: carryErr } = await supabase.rpc('closure_carry');
+      if (carryErr) throw carryErr;
       const { data: qo } = await supabase.from('app_settings').select('value').eq('key', 'quick_ops').maybeSingle();
       setQuickOps(Array.isArray(qo?.value) ? qo.value : []);
 
@@ -354,7 +359,14 @@ export default function App() {
       })));
       setSupply(sup.map(s => ({ id: s.id, text: s.text, bought: s.bought, author: nameOf(s.created_by), date: dOnly(s.created_at) })));
       setNotes(nts.map(n => ({ ...n, author: nameOf(n.created_by), date: dOnly(n.updated_at || n.created_at) })));
-      setDayClosures(dc.map(c => ({ date: c.close_date, cash_fact: +c.cash_fact, cash_taken: +c.cash_taken || 0, cash_calc: +c.cash_calc, diff: +c.diff, closed_by: nameOf(c.closed_by) })));
+      const dcFull = dc.map(c => ({ date: c.close_date, cash_fact: +c.cash_fact, cash_taken: +c.cash_taken || 0, cash_calc: +c.cash_calc, diff: +c.diff, closed_by: nameOf(c.closed_by) }));
+      // Невидимые закрытия — «огрызками» (только дата + остаток), чтобы перенос «утро»
+      // в Финансах считался от последнего закрытия, а не от нуля. Секции по этим датам
+      // ничего больше не ищут: сотрудница работает с сегодня/вчера, владелец видит всё сам
+      const dcDates = new Set(dcFull.map(c => c.date));
+      const dcStubs = (carryRows || []).filter(r => !dcDates.has(r.close_date))
+        .map(r => ({ date: r.close_date, cash_fact: +r.carry || 0, cash_taken: 0, cash_calc: null, diff: null, closed_by: '', carry_only: true }));
+      setDayClosures([...dcFull, ...dcStubs]);
       setTransactions(tx.map(t => ({
         ...t, amount: +t.amount, created_by_id: t.created_by, created_by: nameOf(t.created_by), time: hhmm(t.created_at),
         log: txLog.filter(l => l.transaction_id === t.id).map(l => ({ who: l.who, action: l.action, time: logT(l.created_at) })),

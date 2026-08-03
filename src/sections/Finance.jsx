@@ -559,6 +559,14 @@ function EmployeeView(props) {
                     border: 'none', background: UI.accent, color: UI.dark, borderRadius: 999, padding: '5px 12px',
                     fontWeight: 800, fontSize: 12, marginLeft: 'auto', cursor: 'pointer',
                   }}><I n="repeat" size={11} /> пересчитать</button>
+                  {/* Закрыла смену по ошибке — отмена возвращает форму закрытия (просьба Кристи 2026-08-03) */}
+                  <button onClick={async () => {
+                    const ok = await db.deleteClosure(closure.date);
+                    if (ok) showToast('Закрытие отменено — можно закрыть смену заново');
+                  }} style={{
+                    border: '1px solid rgba(255,255,255,.35)', background: 'transparent', color: '#fff', borderRadius: 999, padding: '5px 12px',
+                    fontWeight: 800, fontSize: 12, cursor: 'pointer',
+                  }}>✕ отменить</button>
                 </div>
               </div>
             ) : (
@@ -899,6 +907,13 @@ function OwnerView(props) {
                   }}>{m.label} · {fmt(sum)} ₽</button>
                 );
               })}
+              {/* Расходы девочек в общей ленте не выискивать глазами — своя пилюля с суммой (просьба Кристи 2026-08-03) */}
+              {expense > 0 && (
+                <button onClick={() => setTxType(v => v === 'expense' ? '' : 'expense')} style={{
+                  border: 'none', borderRadius: 999, padding: '6px 13px', fontSize: 12, fontWeight: 700,
+                  background: txType === 'expense' ? '#c0392b' : 'rgba(192,57,43,.12)', color: txType === 'expense' ? '#fff' : '#c0392b',
+                }}><I n="expense" size={12} /> Расходы · {fmt(expense)} ₽</button>
+              )}
             </div>
           )}
           <div style={{ maxHeight: 430, overflowY: 'auto', paddingRight: 6 }}>
@@ -1062,6 +1077,14 @@ function OwnerView(props) {
                 border: 'none', background: UI.accent, color: UI.dark, borderRadius: 999, padding: '5px 12px',
                 fontWeight: 800, fontSize: 12, marginLeft: 8, cursor: 'pointer',
               }}><I n="repeat" size={11} /> пересчитать</button>
+              {/* Закрыла день по ошибке — отмена возвращает форму закрытия (просьба Кристи 2026-08-03) */}
+              <button onClick={async () => {
+                const ok = await db.deleteClosure(shiftClosure.date);
+                if (ok) showToast('Закрытие отменено — можно закрыть день заново');
+              }} style={{
+                border: '1px solid rgba(255,255,255,.35)', background: 'transparent', color: '#fff', borderRadius: 999, padding: '5px 12px',
+                fontWeight: 800, fontSize: 12, marginLeft: 8, cursor: 'pointer',
+              }}>✕ отменить</button>
             </div>
           )}
           <div style={{ fontWeight: 800, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>

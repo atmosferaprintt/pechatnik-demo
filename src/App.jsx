@@ -462,6 +462,18 @@ export default function App() {
       return true;
     },
 
+    // Отмена ошибочного закрытия смены (просьба Кристи 2026-08-03): строка удаляется,
+    // форма закрытия появляется снова, «на утро» пересчитывается от предыдущего закрытия
+    async deleteClosure(date) {
+      if (!DEMO) {
+        const { data, error } = await supabase.from('day_closures').delete().eq('close_date', date).select();
+        if (error) return fail(error);
+        if (!data?.length) { showToast('Не удалось отменить — закрытие слишком старое', 'error'); return null; } // RLS: сотрудницам доступны только сегодня/вчера
+      }
+      setDayClosures(prev => prev.filter(c => c.date !== date));
+      return true;
+    },
+
     async closeShift({ date, cash_calc, cash_fact, cash_taken, diff }) {
       if (!DEMO) {
         const { error } = await supabase.from('day_closures').insert({ close_date: date, cash_calc, cash_fact, cash_taken, diff, closed_by: currentUser.id });

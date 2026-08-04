@@ -30,7 +30,7 @@ function deadlineStatus(t) {
   return 'ok';
 }
 
-export default function Tasks({ tasks, clients, contractors, transactions, categories, currentUser, isOwner, isOwnerAccount, db, PEOPLE_COLUMNS, STAGES, UI, showToast, onPayTask }) {
+export default function Tasks({ tasks, clients, contractors, transactions, categories, banks, PAYMENT_METHODS, currentUser, isOwner, isOwnerAccount, db, PEOPLE_COLUMNS, STAGES, UI, showToast, onPayTask }) {
   const [openTask, setOpenTask] = useState(null);
   const [view, setView] = useState('board'); // board | debts | done
   // Форма новой задачи (и правки существующей — editTask)
@@ -673,27 +673,29 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
               </div>
 
               <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Оплаты по задаче</div>
-              {/* Сотрудница видит построчно только СВОИ оплаты (решение Кристи 2026-07-17);
-                  чужие — одной строкой без деталей, итог и долг остаются в графе «Оплата» */}
+              {/* Все оплаты построчно с датой и способом, «Из предоплаты» — списание с депозита
+                  (просьба Кристи 2026-08-03; отменяет прежний счётчик «+ N оплат» без деталей).
+                  hidden_rows — оплаты вне RLS-окна сотрудницы, их отдаёт функция 021 */}
               {(() => {
-                const visiblePaid = isOwnerAccount ? paid : paid.filter(p => p.created_by === currentUser.name);
-                const hiddenCnt = paid.length - visiblePaid.length + (t.hidden_cnt || 0);
+                const mLabel = (k) => PAYMENT_METHODS.find(m => m.key === k)?.label || k;
+                const payWay = (method, bankId, bankNm) => method === 'deposit' ? 'Из предоплаты'
+                  : mLabel(method) + (bankNm || bankId ? ` · ${bankNm || banks.find(b => b.id === bankId)?.name || ''}` : '');
+                const rows = [
+                  ...(t.hidden_rows || []).map((r, i) => ({ key: `h${i}`, cat: null, way: payWay(r.method, null, r.bank), who: r.who, date: dm(r.date), amount: r.amount })),
+                  ...paid.map(p => ({ key: `v${p.id}`, cat: p.payment_method === 'deposit' ? null : catName(p.category_id), way: payWay(p.payment_method, p.bank_id), who: p.created_by, date: dm(p.op_date), amount: p.amount })),
+                ];
                 return (
                   <>
-                    {visiblePaid.map(p => (
-                      <div key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
+                    {rows.map(r => (
+                      <div key={r.key} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
                         <I n="income" size={14} style={{ color: '#8a8a85' }} />
-                        <span style={{ fontWeight: 600 }}>{catName(p.category_id)}</span>
-                        <span style={{ color: UI.muted, fontSize: 12.5 }}>{p.created_by} · {p.time}</span>
-                        <span style={{ marginLeft: 'auto', fontWeight: 700 }}>+{fmt(p.amount)}</span>
+                        <span style={{ fontWeight: 600 }}>{r.cat || r.way}</span>
+                        {r.cat && <span style={{ background: UI.soft, borderRadius: 999, padding: '2px 10px', fontSize: 11.5 }}>{r.way}</span>}
+                        <span style={{ color: UI.muted, fontSize: 12.5 }}>{r.who} · {r.date}</span>
+                        <span style={{ marginLeft: 'auto', fontWeight: 700 }}>+{fmt(r.amount)}</span>
                       </div>
                     ))}
-                    {hiddenCnt > 0 && (
-                      <div style={{ color: UI.muted, fontSize: 13, padding: '9px 2px' }}>
-                        + {hiddenCnt} оплат{hiddenCnt === 1 ? 'а' : ''} (других сотрудниц или старше недели) — итог в графе «Оплата»
-                      </div>
-                    )}
-                    {!paid.length && !(t.hidden_cnt || 0) && (
+                    {!rows.length && (
                       <div style={{ color: UI.muted, fontSize: 13.5 }}>Оплат пока нет — записываются в Финансах с привязкой к задаче</div>
                     )}
                   </>

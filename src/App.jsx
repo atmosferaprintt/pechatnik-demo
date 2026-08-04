@@ -315,13 +315,18 @@ export default function App() {
         loadAllRows('notes'),
       ]);
       const txLog = await loadAllRows('transaction_log');
-      // «Оплачено» по задачам, которое сотруднице не видно построчно (RLS-окно 7 дней, 016):
-      // без этого оплаты старше недели «слетали» и долг возвращался (жалобы 2026-07-31).
-      // Функция 018 отдаёт только итог по задаче; у владельца — пусто (он видит всё сам).
-      const { data: hidRows, error: hidErr } = await supabase.rpc('task_paid_hidden');
+      // Оплаты по задачам, которые сотруднице не видны (RLS-окно 7 дней, 016): без них оплаты
+      // старше недели «слетали» и долг возвращался (жалобы 2026-07-31). Функция 021 отдаёт их
+      // построчно (дата/сумма/способ/кто — просьба Кристи 2026-08-03 расписывать оплаты
+      // в карточке); у владельца — пусто (он видит всё сам). Итоги paid/cnt считаем из строк.
+      const { data: hidRows, error: hidErr } = await supabase.rpc('task_payment_rows');
       if (hidErr) throw hidErr;
       const hidPaid = {};
-      (hidRows || []).forEach(r => { hidPaid[r.task_id] = { paid: +r.paid || 0, cnt: r.cnt || 0 }; });
+      (hidRows || []).forEach(r => {
+        const h = hidPaid[r.task_id] ??= { paid: 0, cnt: 0, rows: [] };
+        h.paid += +r.amount || 0; h.cnt += 1;
+        h.rows.push({ date: r.op_date, amount: +r.amount || 0, method: r.payment_method, bank: r.bank, who: r.who });
+      });
       // Переносы кассы по закрытиям, невидимым сотруднице (RLS «сегодня+вчера», 002):
       // при закрытии вчерашней смены наутро позавчерашнее закрытие выпадало из окна,
       // перенос «утро» обнулялся и касса «не сходилась» (смена 30.07, функция 019)
@@ -345,7 +350,7 @@ export default function App() {
       setContractorTasks(ctrT.map(t => ({ ...t, amount: t.amount == null ? null : +t.amount, paid: +t.paid || 0 })));
       setTasks(ts.map(t => ({
         ...t, amount: t.amount == null ? null : +t.amount, parts: t.parts || [],
-        hidden_paid: hidPaid[t.id]?.paid || 0, hidden_cnt: hidPaid[t.id]?.cnt || 0,
+        hidden_paid: hidPaid[t.id]?.paid || 0, hidden_cnt: hidPaid[t.id]?.cnt || 0, hidden_rows: hidPaid[t.id]?.rows || [],
         created_at: dOnly(t.created_at),
         log: logs.filter(l => l.task_id === t.id).map(l => ({ who: l.who, action: l.action, time: logT(l.created_at) })),
       })));

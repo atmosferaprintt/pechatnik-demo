@@ -728,11 +728,13 @@ export default function App() {
     },
 
     async setContractorTaskStage(t, stage) {
+      // stage_changed_at — чтобы «Готово» показывало свежеотмеченные сверху (просьба Кристи 2026-08-07)
+      const stage_changed_at = new Date().toISOString();
       if (!DEMO) {
-        const { error } = await supabase.from('contractor_tasks').update({ stage }).eq('id', t.id);
+        const { error } = await supabase.from('contractor_tasks').update({ stage, stage_changed_at }).eq('id', t.id);
         if (error) return fail(error);
       }
-      setContractorTasks(prev => prev.map(x => x.id === t.id ? { ...x, stage } : x));
+      setContractorTasks(prev => prev.map(x => x.id === t.id ? { ...x, stage, stage_changed_at } : x));
       return true;
     },
 

@@ -13,6 +13,7 @@ const inpC = (UI) => ({
 export default function Clients({ clients, tasks, transactions, categories, db, UI, showToast }) {
   const [query, setQuery] = useState('');
   const [debtorsOnly, setDebtorsOnly] = useState(false);
+  const [sortBy, setSortBy] = useState('new'); // new (свежие сверху) | name — просьба Кристи 2026-08-07
   const [openClient, setOpenClient] = useState(null);
   const [priceWhat, setPriceWhat] = useState('');
   const [priceVal, setPriceVal] = useState('');
@@ -59,7 +60,9 @@ export default function Clients({ clients, tasks, transactions, categories, db, 
   const filtered = clients.filter(c =>
     (c.name + c.phone + (c.instagram || '')).toLowerCase().includes(query.toLowerCase())
     && (!debtorsOnly || clientDebt(c.id) > 0)
-  );
+  ).sort((a, b) => sortBy === 'name'
+    ? a.name.localeCompare(b.name, 'ru')
+    : (b.created_at || '').localeCompare(a.created_at || '') || b.id - a.id);
 
   const th = { textAlign: 'left', padding: '10px 14px', fontSize: 12.5, color: UI.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 };
   const td = { padding: '13px 14px', fontSize: 14, borderTop: `1px solid ${UI.line}` };
@@ -73,6 +76,14 @@ export default function Clients({ clients, tasks, transactions, categories, db, 
           border: 'none', borderRadius: 999, padding: '9px 18px', fontSize: 13.5, fontWeight: 700,
           background: debtorsOnly ? '#c0392b' : '#fff', color: debtorsOnly ? '#fff' : UI.dark, boxShadow: UI.shadow,
         }}>Должники</button>
+        <div style={{ display: 'flex', background: '#fff', borderRadius: 999, padding: 4, boxShadow: UI.shadow }}>
+          {[['new', 'Новые сверху'], ['name', 'По имени']].map(([k, l]) => (
+            <button key={k} onClick={() => setSortBy(k)} style={{
+              border: 'none', borderRadius: 999, padding: '7px 14px', fontSize: 12.5, fontWeight: 700,
+              background: sortBy === k ? UI.dark : 'transparent', color: sortBy === k ? '#fff' : UI.dark,
+            }}>{l}</button>
+          ))}
+        </div>
         <input
           value={query}
           onChange={e => setQuery(e.target.value)}

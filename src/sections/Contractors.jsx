@@ -119,6 +119,8 @@ function ContractorBoard({ contractors, contractorTasks, db, CONTRACTOR_STAGES, 
           const q = query.trim().toLowerCase();
           const inStage = contractorTasks.filter(t => t.stage === stage
             && (!q || t.title.toLowerCase().includes(q) || (contractors.find(c => c.id === t.contractor_id)?.name || '').toLowerCase().includes(q)));
+          // «Готово»: свежеотмеченные сверху (просьба Кристи 2026-08-07); строки без метки — внизу как были
+          if (stage === 'Готово') inStage.sort((a, b) => (b.stage_changed_at || '').localeCompare(a.stage_changed_at || ''));
           const sum = inStage.reduce((s, t) => s + (t.amount || 0), 0);
           const colDebt = inStage.reduce((s, t) => s + Math.max(0, (t.amount || 0) - (t.paid || 0)), 0);
           return (

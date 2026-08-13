@@ -3,6 +3,7 @@
 // Заглушка на демо-данных.
 import I from '../Icon.jsx';
 import { localDate } from '../dates.js';
+import { debtOfTask } from '../taskMoney.js';
 const fmt = (n) => (n || 0).toLocaleString('ru-RU');
 const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
 const TODAY = localDate();
@@ -87,10 +88,10 @@ function OwnerDash({ transactions, tasks, clients, categories, dayClosures, demo
   const income = dayTx.filter(t => t.type === 'income' && t.payment_method !== 'deposit').reduce((s, t) => s + t.amount, 0);
   const expense = dayTx.filter(t => t.type === 'expense' && kindOf(t) !== 'expense_personal').reduce((s, t) => s + t.amount, 0);
 
-  // hidden_paid — оплаты вне RLS-окна сотрудницы (App.jsx/018), без него старые оплаты «слетали»
-  const paidByTask = (t) => (t.hidden_paid || 0) + transactions.filter(x => x.task_id === t.id && x.type === 'income').reduce((s, x) => s + x.amount, 0);
+  // Долг по задаче — общий src/taskMoney.js: приходы минус возвраты клиенту,
+  // со скрытыми от сотрудницы строками (hidden_*, 023); у отказных задач долга нет
   const debtors = tasks
-    .map(t => ({ ...t, debt: (t.amount || 0) - paidByTask(t) }))
+    .map(t => ({ ...t, debt: debtOfTask(transactions, t) }))
     .filter(t => t.debt > 0)
     .sort((a, b) => b.debt - a.debt);
   const totalDebt = debtors.reduce((s, t) => s + t.debt, 0);

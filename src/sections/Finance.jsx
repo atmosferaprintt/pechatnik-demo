@@ -6,6 +6,7 @@
 import CatPicker from '../CatPicker.jsx';
 import { useState } from 'react';
 import I from '../Icon.jsx';
+import { paidOfTask, debtOfTask, isRefundCat } from '../taskMoney.js';
 
 export default function Finance(props) {
   return props.isOwner ? <OwnerView {...props} /> : <EmployeeView {...props} />;
@@ -13,17 +14,50 @@ export default function Finance(props) {
 
 const fmt = (n) => (n || 0).toLocaleString('ru-RU');
 
-// Оплачено/долг по задаче — нужно и форме новой оплаты, и модалкам правки записей:
-// завершённая задача с долгом должна выбираться и при привязке оплаты задним числом
+// Оплачено/долг по задаче считает общий src/taskMoney.js (оплаты − возвраты, скрытые строки,
+// отказ клиента). Нужно и форме новой оплаты, и модалкам правки: завершённая задача с долгом
+// должна выбираться и при привязке оплаты задним числом
 // («оплата по долгу пришла раньше, записали без задачи — теперь не привязать», Кристи 2026-07-21)
-// hidden_paid — оплаты вне RLS-окна сотрудницы (App.jsx/018), без него старые оплаты «слетали»
-const paidOfTask = (transactions, t) => (t.hidden_paid || 0) + transactions.filter(x => x.task_id === t.id && x.type === 'income').reduce((s, x) => s + x.amount, 0);
-const debtOfTask = (transactions, t) => (t.amount || 0) - paidOfTask(transactions, t);
 // Подпись задачи в селектах привязки: «Баннер 3×6 · долг 12 000 ₽ (выдана)»
 const taskOptionLabel = (transactions, t) => {
   const debt = debtOfTask(transactions, t);
-  return `${t.title}${debt > 0 ? ` · долг ${fmt(debt)} ₽` : ''}${t.done ? ' (выдана)' : ''}`;
+  return `${t.title}${debt > 0 ? ` · долг ${fmt(debt)} ₽` : ''}${t.cancelled ? ' (отказ)' : t.done ? ' (выдана)' : ''}`;
 };
+// Привязка записи к задаче в модалках правки (у сотрудницы и у владельца — одна и та же).
+// У дохода — открытые задачи и выданные с долгом («оплата по долгу пришла раньше, записали
+// без задачи», Кристи 2026-07-21). У возврата (расход категории «Возврат», 2026-08-13) —
+// задачи, по которым есть что возвращать; уже привязанная задача в списке всегда,
+// иначе её нельзя было бы отвязать.
+function TaskLinkSelect({ tasks, transactions, value, onChange, isRefund, currentId, UI }) {
+  const list = tasks
+    .filter(x => x.id === currentId || (isRefund
+      ? paidOfTask(transactions, x) > 0
+      : !x.done || debtOfTask(transactions, x) > 0))
+    .sort((a, b) => isRefund
+      ? b.id - a.id
+      : (debtOfTask(transactions, a) > 0) - (debtOfTask(transactions, b) > 0));
+  const linked = value ? tasks.find(x => x.id === +value) : null;
+  return (
+    <>
+      <select value={value} onChange={e => onChange(e.target.value)} style={{
+        width: '100%', padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 14, outline: 'none',
+      }}>
+        <option value="">{isRefund ? 'За какую задачу возврат…' : 'Без задачи…'}</option>
+        {list.map(x => (
+          <option key={x.id} value={x.id}>
+            {isRefund ? `${x.title} · оплачено ${fmt(paidOfTask(transactions, x))} ₽${x.done ? ' (выдана)' : ''}` : taskOptionLabel(transactions, x)}
+          </option>
+        ))}
+      </select>
+      {isRefund && linked && !linked.cancelled && (
+        <div style={{ color: UI.muted, fontSize: 12, padding: '0 6px' }}>
+          Возврат уменьшит «оплачено» по задаче. Если клиент отказался от заказа — закрой задачу кнопкой «✕ Отказ» в её карточке, иначе на ней останется долг.
+        </div>
+      )}
+    </>
+  );
+}
+
 // Общий чек для разбитой на статьи оплаты. ВАЖНО: crypto.randomUUID есть только на HTTPS,
 // а мы пока на http://IP — поэтому свой генератор валидного UUID v4.
 const newBatchId = () => {
@@ -79,6 +113,12 @@ function EntryForm({ categories, banks, tasks, clients, transactions, db, PAYMEN
   const linkTasks = tasks.filter(t => !t.done || taskDebt(t) > 0)
     .sort((a, b) => (taskDebt(a) > 0) - (taskDebt(b) > 0));
 
+  // Возврат клиенту (2026-08-13, отказ от заказа «кепки»): расход категории «Возврат» тоже
+  // привязывается к задаче и уменьшает по ней «оплачено». Выбирать можно любую задачу,
+  // по которой есть что возвращать — в том числе уже выданную; свежие сверху.
+  const refundMode = type === 'expense' && isRefundCat(categories.find(c => c.id === +rows[0]?.cat));
+  const refundTasks = refundMode ? tasks.filter(t => paidOf(t) > 0).sort((a, b) => b.id - a.id) : [];
+
   const kindLabel = { expense_shared: '', expense_work: ' · рабочие (приватные)', expense_personal: '' };
 
   const activeRows = type === 'income' ? rows : rows.slice(0, 1);
@@ -94,8 +134,10 @@ function EntryForm({ categories, banks, tasks, clients, transactions, db, PAYMEN
     const filled = activeRows.filter(r => r.cat && +r.sum > 0);
     if (!filled.length || filled.length !== activeRows.length) { showToast('Заполни категорию и сумму в каждой статье', 'error'); return; }
 
-    // «➕ Новая задача» из привязки — создаём задачу на месте
-    let linkTaskId = type === 'income' && taskId && taskId !== '__new' ? +taskId : null;
+    // «➕ Новая задача» из привязки — создаём задачу на месте.
+    // У расхода привязка есть только у возвратов (refundMode) и без «новой задачи»:
+    // возвращают всегда по существующему заказу
+    let linkTaskId = (type === 'income' || refundMode) && taskId && taskId !== '__new' ? +taskId : null;
     let linkClientId = null;
     if (type === 'income' && taskId === '__new') {
       if (!newTaskTitle.trim()) { showToast('Укажи название новой задачи', 'error'); return; }
@@ -132,7 +174,7 @@ function EntryForm({ categories, banks, tasks, clients, transactions, db, PAYMEN
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', background: UI.soft, borderRadius: 999, padding: 5 }}>
         {[['income', 'Доход'], ['expense', 'Расход']].map(([k, l]) => (
-          <button key={k} onClick={() => { setType(k); setRows([{ cat: '', sum: '' }]); }} style={{
+          <button key={k} onClick={() => { setType(k); setRows([{ cat: '', sum: '' }]); setTaskId(''); }} style={{
             flex: 1, border: 'none', borderRadius: 999, padding: '10px 0', fontWeight: 700, fontSize: 14,
             background: type === k ? UI.dark : 'transparent', color: type === k ? '#fff' : UI.dark,
           }}>{l}</button>
@@ -209,7 +251,7 @@ function EntryForm({ categories, banks, tasks, clients, transactions, db, PAYMEN
             const t = tasks.find(x => x.id === +taskId);
             if (!t) return null;
             const paid = paidOf(t);
-            const debt = (t.amount || 0) - paid;
+            const debt = taskDebt(t);
             const over = total > 0 && total > debt;
             // Разбивка оплаты по составу заказа: статьи из parts, категория подбирается по имени части.
             // Части часто называются не как категории («Печать», «Дизайн») — тогда подставляем
@@ -255,6 +297,33 @@ function EntryForm({ categories, banks, tasks, clients, transactions, db, PAYMEN
         </>
       )}
 
+      {/* Возврат клиенту — привязка к задаче: «оплачено» по ней уменьшится на эту сумму
+          (просьба Кристи 2026-08-13: «привязать возврат к задаче, чтобы баланс сошёлся») */}
+      {refundMode && (
+        <>
+          <select style={input} value={taskId} onChange={e => setTaskId(e.target.value)}>
+            <option value="">За какую задачу возврат (необязательно)…</option>
+            {refundTasks.map(t => (
+              <option key={t.id} value={t.id}>{t.title} · оплачено {fmt(paidOf(t))} ₽{t.done ? ' (выдана)' : ''}</option>
+            ))}
+          </select>
+          {taskId && (() => {
+            const t = tasks.find(x => x.id === +taskId);
+            if (!t) return null;
+            const paid = paidOf(t);
+            const left = paid - total;
+            return (
+              <div style={{ color: left < 0 ? '#8a5a00' : UI.muted, fontSize: 12, padding: '0 6px' }}>
+                {left < 0
+                  ? `По задаче оплачено ${fmt(paid)} ₽ — возвращаешь больше, чем клиент вносил`
+                  : `Оплачено ${fmt(paid)} ₽ → после возврата останется ${fmt(left)} ₽`}
+                {!t.cancelled && ' · если клиент отказался от заказа — закрой задачу кнопкой «✕ Отказ» в её карточке, иначе на ней останется долг'}
+              </div>
+            );
+          })()}
+        </>
+      )}
+
       <input style={input} placeholder="Комментарий (необязательно)" value={comment} onChange={e => setComment(e.target.value)} />
 
       <button onClick={save} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '15px 0', fontSize: 15, fontWeight: 800 }}>
@@ -288,6 +357,8 @@ function EmployeeView(props) {
   const [emBank, setEmBank] = useState('');
   const [emTask, setEmTask] = useState('');
   const [emComment, setEmComment] = useState('');
+  // Возврат клиенту — расход, который тоже привязывается к задаче (2026-08-13)
+  const emRefund = isRefundCat(categories.find(c => c.id === +emCat));
 
   const openEmpEdit = (t) => {
     setEmpEdit(t);
@@ -637,18 +708,11 @@ function EmployeeView(props) {
                 {banks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             )}
-            {/* «Записала оплату, но не расписала задачу» — привязка задним числом */}
-            {empEdit.type === 'income' && (
-              <select value={emTask} onChange={e => setEmTask(e.target.value)} style={{
-                width: '100%', padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 14, outline: 'none',
-              }}>
-                <option value="">Без задачи…</option>
-                {/* Выданные с долгом — тоже в списке (внизу единым блоком): оплату по долгу часто записывают позже её прихода */}
-                {tasks.filter(x => !x.done || debtOfTask(transactions, x) > 0 || x.id === empEdit.task_id)
-                  .sort((a, b) => (debtOfTask(transactions, a) > 0) - (debtOfTask(transactions, b) > 0)).map(x => (
-                  <option key={x.id} value={x.id}>{taskOptionLabel(transactions, x)}</option>
-                ))}
-              </select>
+            {/* «Записала оплату, но не расписала задачу» — привязка задним числом.
+                У расхода селектор показываем только у возвратов (и если задача уже привязана) */}
+            {(empEdit.type === 'income' || emRefund || empEdit.task_id) && (
+              <TaskLinkSelect tasks={tasks} transactions={transactions} UI={UI}
+                value={emTask} onChange={setEmTask} isRefund={empEdit.type === 'expense'} currentId={empEdit.task_id} />
             )}
             <input value={emComment} onChange={e => setEmComment(e.target.value)} placeholder="Комментарий" style={{
               width: '100%', padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 14, outline: 'none',
@@ -683,6 +747,8 @@ function OwnerView(props) {
   const [eBank, setEBank] = useState('');
   const [eTask, setETask] = useState(''); // привязка оплаты к задаче — можно задним числом (просьба 2026-07-17)
   const [eComment, setEComment] = useState('');
+  // Возврат клиенту — расход, который тоже привязывается к задаче (2026-08-13)
+  const eRefund = isRefundCat(categories.find(c => c.id === +eCat));
   const [historyTxId, setHistoryTxId] = useState(null); // раскрытая история записи
   // Журнал изменений кассы: все правки и удаления операций — кто, когда, что (просьба Кристи 2026-07-17)
   const [showJournal, setShowJournal] = useState(false);
@@ -1170,18 +1236,11 @@ function OwnerView(props) {
                 {banks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             )}
-            {/* Привязка к задаче задним числом: «записала в оплаты, но не расписала задачу» */}
-            {editTx.type === 'income' && (
-              <select value={eTask} onChange={e => setETask(e.target.value)} style={{
-                width: '100%', padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 14, outline: 'none',
-              }}>
-                <option value="">Без задачи…</option>
-                {/* Выданные с долгом — тоже в списке (внизу единым блоком): оплату по долгу часто записывают позже её прихода */}
-                {tasks.filter(x => !x.done || debtOfTask(transactions, x) > 0 || x.id === editTx.task_id)
-                  .sort((a, b) => (debtOfTask(transactions, a) > 0) - (debtOfTask(transactions, b) > 0)).map(x => (
-                  <option key={x.id} value={x.id}>{taskOptionLabel(transactions, x)}</option>
-                ))}
-              </select>
+            {/* Привязка к задаче задним числом: «записала в оплаты, но не расписала задачу».
+                У расхода — только возвраты (и уже привязанные записи, чтобы можно было отвязать) */}
+            {(editTx.type === 'income' || eRefund || editTx.task_id) && (
+              <TaskLinkSelect tasks={tasks} transactions={transactions} UI={UI}
+                value={eTask} onChange={setETask} isRefund={editTx.type === 'expense'} currentId={editTx.task_id} />
             )}
             <input value={eComment} onChange={e => setEComment(e.target.value)} placeholder="Комментарий" style={{
               width: '100%', padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 14, outline: 'none',

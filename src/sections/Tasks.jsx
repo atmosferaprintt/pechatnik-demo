@@ -9,6 +9,7 @@ import { Fragment, useState } from 'react';
 import I from '../Icon.jsx';
 import CatPicker from '../CatPicker.jsx';
 import { localDate } from '../dates.js';
+import { taskIncomeRows, taskRefundRows, paidOfTask, debtOfTask } from '../taskMoney.js';
 
 const fmt = (n) => (n || 0).toLocaleString('ru-RU') + ' ₽';
 const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
@@ -61,16 +62,18 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
   const client = (id) => clients.find(c => c.id === id);
   const clientShort = (id) => client(id)?.name?.split('·')[0]?.trim() || '—';
 
-  const payments = (taskId) => transactions.filter(t => t.task_id === taskId && t.type === 'income');
-  // Итог «оплачено» = видимые строки + hidden_paid (оплаты вне RLS-окна сотрудницы, App.jsx/018) —
-  // иначе оплаты старше недели «слетали» и долг возвращался (жалобы 2026-07-31)
-  const paidSum = (taskId) => (tasks.find(x => x.id === taskId)?.hidden_paid || 0)
-    + payments(taskId).reduce((s, p) => s + p.amount, 0);
+  const payments = (taskId) => taskIncomeRows(transactions, taskId);
+  // Возвраты клиенту — расходы, привязанные к задаче (2026-08-13, отказ от заказа «кепки»)
+  const refunds = (taskId) => taskRefundRows(transactions, taskId);
+  // Итог «оплачено» = приходы − возвраты, вместе со строками вне RLS-окна сотрудницы
+  // (hidden_*, App.jsx/023) — иначе оплаты старше недели «слетали» и долг возвращался (2026-07-31)
+  const paidSum = (taskId) => paidOfTask(transactions, tasks.find(x => x.id === taskId) || { id: taskId });
   const catName = (id) => categories.find(c => c.id === id)?.name || '?';
   // Части состава заказа выбираются из категорий доходов (просьба Кристи 2026-07-21) —
   // тогда «разбить по составу» в форме оплаты попадает в категории автоматически
   const incomeCats = categories.filter(c => c.kind === 'income');
-  const taskDebt = (t) => (t.amount || 0) - paidSum(t.id);
+  // У отказной задачи долга нет: заказа больше не существует (см. taskMoney.js)
+  const taskDebt = (t) => debtOfTask(transactions, t);
 
   // Поиск по названию/клиенту + быстрые фильтры «с долгом» и «горят»
   const matches = (t) => {
@@ -80,7 +83,8 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
     return okQ && okF;
   };
 
-  // Завершённая задача уходит с доски: с долгом — в «Долги», оплаченная — в «Завершённые»
+  // Завершённая задача уходит с доски: с долгом — в «Долги», оплаченная — в «Завершённые».
+  // Отказная (cancelled) долга не имеет, поэтому в «Долгах» не висит — сразу в завершённые
   const activeTasks = tasks.filter(t => !t.done && matches(t));
   const debtTasks = tasks.filter(t => t.done && taskDebt(t) > 0 && matches(t));
   const doneTasks = tasks.filter(t => t.done && taskDebt(t) <= 0 && matches(t));
@@ -94,8 +98,21 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
   };
 
   const reopenTask = (task) => {
-    db.updateTask(task, { done: false }, { who: currentUser.name, action: '↩ вернула в работу' });
+    // Возврат в работу снимает и отказ: заказ снова живой, сумма к оплате прежняя
+    db.updateTask(task, { done: false, cancelled: false }, { who: currentUser.name, action: '↩ вернула в работу' });
     showToast(`«${task.title}» снова в работе ↩`);
+  };
+
+  // Отказ клиента (2026-08-13, «кепки»): заказа больше нет — к оплате 0, задача закрывается
+  // без долга. Деньги, которые клиент успел внести, возвращаются расходом «Возврат»
+  // с привязкой к этой задаче — тогда «оплачено» по ней тоже уходит в ноль.
+  const cancelTask = (task) => {
+    const paid = paidSum(task.id);
+    db.updateTask(task, { done: true, cancelled: true }, { who: currentUser.name, action: '✕ отказ клиента' });
+    setOpenTask(null);
+    showToast(paid > 0
+      ? `«${task.title}» — отказ. Осталось вернуть клиенту ${fmt(paid)}: запиши расход «Возврат» и привяжи к задаче`
+      : `«${task.title}» — отказ клиента, закрыта без долга ✓`);
   };
 
   const stageMove = (task, dir, e) => {
@@ -253,9 +270,20 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
   // Чип статуса оплаты: ✓ оплачено / долг / переплата (small — компактный вариант для карточек доски)
   const PayChip = ({ t, small }) => {
     if (!t.amount && !paidSum(t.id)) return null; // без суммы — нечего показывать
-    const debt = (t.amount || 0) - paidSum(t.id);
+    const debt = taskDebt(t);
     const pad = small ? '2px 7px' : '4px 10px';
     const fs = small ? 11 : 12.5;
+    // Отказ: долга нет, но если деньги клиенту ещё не вернули — это видно
+    if (t.cancelled) {
+      const owed = paidSum(t.id);
+      return owed > 0 ? (
+        <span className="blink" style={{ background: '#c0392b', color: '#fff', borderRadius: 999, padding: pad, fontSize: fs, fontWeight: 700 }}>
+          вернуть {fmt(owed)}
+        </span>
+      ) : (
+        <span style={{ background: UI.soft, borderRadius: 999, padding: pad, fontSize: fs, fontWeight: 700, color: UI.muted }}>✕ отказ</span>
+      );
+    }
     if (t.amount > 0 && debt < 0) return (
       <span style={{ background: 'rgba(243,156,18,.22)', color: '#8a5a00', borderRadius: 999, padding: pad, fontSize: fs, fontWeight: 700 }}>переплата {fmt(-debt)}</span>
     );
@@ -541,8 +569,9 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
         const t = tasks.find(x => x.id === openTask.id) || openTask;
         const c = client(t.client_id);
         const paid = payments(t.id);
-        const paidTotal = paid.reduce((s, p) => s + p.amount, 0) + (t.hidden_paid || 0);
-        const debt = (t.amount || 0) - paidTotal;
+        const refunded = refunds(t.id); // возвраты клиенту по этой задаче
+        const paidTotal = paidSum(t.id); // приходы − возвраты
+        const debt = taskDebt(t);
         const dlStatus = deadlineStatus(t);
         return (
           <div onClick={() => setOpenTask(null)} style={{
@@ -602,9 +631,14 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
                 <Fact label="Клиент" value={c ? c.name : '—'} sub={c?.phone} UI={UI} />
-                <Fact label="Оплата" value={t.amount > 0 && debt < 0 ? `переплата ${fmt(-debt)}` : debt <= 0 ? '✓ оплачено' : `долг ${fmt(debt)}`}
-                  danger={debt > 0} accent={t.amount > 0 && debt < 0}
-                  sub={`заказ ${fmt(t.amount)} · оплачено ${fmt(paidTotal)}`} UI={UI} />
+                <Fact label="Оплата"
+                  value={t.cancelled
+                    ? (paidTotal > 0 ? `вернуть ${fmt(paidTotal)}` : '✕ отказ, в расчёте')
+                    : t.amount > 0 && debt < 0 ? `переплата ${fmt(-debt)}` : debt <= 0 ? '✓ оплачено' : `долг ${fmt(debt)}`}
+                  danger={debt > 0 || (t.cancelled && paidTotal > 0)} accent={!t.cancelled && t.amount > 0 && debt < 0}
+                  sub={t.cancelled
+                    ? `клиент отказался · заказ был ${fmt(t.amount)}`
+                    : `заказ ${fmt(t.amount)} · оплачено ${fmt(paidTotal)}`} UI={UI} />
                 <Fact label="Дедлайн" value={dm(t.deadline)} danger={dlStatus === 'overdue'} accent={dlStatus === 'soon'}
                   sub={dlStatus === 'overdue' ? 'просрочено!' : dlStatus === 'soon' ? 'горит' : 'в графике'} UI={UI} />
                 <Fact label="У кого" value={t.assignee} UI={UI} />
@@ -675,24 +709,26 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
               <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Оплаты по задаче</div>
               {/* Все оплаты построчно с датой и способом, «Из предоплаты» — списание с депозита
                   (просьба Кристи 2026-08-03; отменяет прежний счётчик «+ N оплат» без деталей).
-                  hidden_rows — оплаты вне RLS-окна сотрудницы, их отдаёт функция 021 */}
+                  Возвраты клиенту — тем же списком со знаком минус (2026-08-13).
+                  hidden_rows — строки вне RLS-окна сотрудницы, их отдаёт функция 023 */}
               {(() => {
                 const mLabel = (k) => PAYMENT_METHODS.find(m => m.key === k)?.label || k;
                 const payWay = (method, bankId, bankNm) => method === 'deposit' ? 'Из предоплаты'
                   : mLabel(method) + (bankNm || bankId ? ` · ${bankNm || banks.find(b => b.id === bankId)?.name || ''}` : '');
                 const rows = [
-                  ...(t.hidden_rows || []).map((r, i) => ({ key: `h${i}`, cat: null, way: payWay(r.method, null, r.bank), who: r.who, date: dm(r.date), amount: r.amount })),
-                  ...paid.map(p => ({ key: `v${p.id}`, cat: p.payment_method === 'deposit' ? null : catName(p.category_id), way: payWay(p.payment_method, p.bank_id), who: p.created_by, date: dm(p.op_date), amount: p.amount })),
+                  ...(t.hidden_rows || []).map((r, i) => ({ key: `h${i}`, refund: r.type === 'expense', cat: null, way: payWay(r.method, null, r.bank), who: r.who, date: dm(r.date), amount: r.amount })),
+                  ...paid.map(p => ({ key: `v${p.id}`, refund: false, cat: p.payment_method === 'deposit' ? null : catName(p.category_id), way: payWay(p.payment_method, p.bank_id), who: p.created_by, date: dm(p.op_date), amount: p.amount })),
+                  ...refunded.map(p => ({ key: `r${p.id}`, refund: true, cat: catName(p.category_id), way: payWay(p.payment_method, p.bank_id), who: p.created_by, date: dm(p.op_date), amount: p.amount })),
                 ];
                 return (
                   <>
                     {rows.map(r => (
                       <div key={r.key} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
-                        <I n="income" size={14} style={{ color: '#8a8a85' }} />
-                        <span style={{ fontWeight: 600 }}>{r.cat || r.way}</span>
-                        {r.cat && <span style={{ background: UI.soft, borderRadius: 999, padding: '2px 10px', fontSize: 11.5 }}>{r.way}</span>}
+                        <I n={r.refund ? 'expense' : 'income'} size={14} style={{ color: r.refund ? '#c0392b' : '#8a8a85' }} />
+                        <span style={{ fontWeight: 600 }}>{r.refund ? `Возврат клиенту${r.cat && r.cat !== 'Возврат' ? ` · ${r.cat}` : ''}` : (r.cat || r.way)}</span>
+                        {(r.cat || r.refund) && <span style={{ background: UI.soft, borderRadius: 999, padding: '2px 10px', fontSize: 11.5 }}>{r.way}</span>}
                         <span style={{ color: UI.muted, fontSize: 12.5 }}>{r.who} · {r.date}</span>
-                        <span style={{ marginLeft: 'auto', fontWeight: 700 }}>+{fmt(r.amount)}</span>
+                        <span style={{ marginLeft: 'auto', fontWeight: 700, color: r.refund ? '#c0392b' : UI.dark }}>{r.refund ? '−' : '+'}{fmt(r.amount)}</span>
                       </div>
                     ))}
                     {!rows.length && (
@@ -702,12 +738,21 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                 );
               })()}
               {/* Мини-счёт: заказ − оплачено = долг / переплата. Оплаты живут в Финансах и при правке задачи не трогаются */}
-              {(paid.length > 0 || (t.hidden_cnt || 0) > 0) && (
+              {(paid.length > 0 || refunded.length > 0 || (t.hidden_cnt || 0) > 0) && (
                 <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', padding: '10px 2px 2px', fontSize: 13.5 }}>
                   <span style={{ fontWeight: 800 }}>Итого оплачено {fmt(paidTotal)}</span>
-                  <span style={{ marginLeft: 'auto', fontWeight: 700, color: debt > 0 ? '#c0392b' : t.amount > 0 && debt < 0 ? '#8a5a00' : UI.muted }}>
-                    {debt > 0 ? `долг ${fmt(debt)}` : t.amount > 0 && debt < 0 ? `переплата ${fmt(-debt)}` : 'в расчёте ✓'}
+                  <span style={{ marginLeft: 'auto', fontWeight: 700, color: debt > 0 || (t.cancelled && paidTotal > 0) ? '#c0392b' : t.amount > 0 && debt < 0 ? '#8a5a00' : UI.muted }}>
+                    {t.cancelled
+                      ? (paidTotal > 0 ? `отказ — вернуть клиенту ${fmt(paidTotal)}` : 'отказ, в расчёте ✓')
+                      : debt > 0 ? `долг ${fmt(debt)}` : t.amount > 0 && debt < 0 ? `переплата ${fmt(-debt)}` : 'в расчёте ✓'}
                   </span>
+                </div>
+              )}
+
+              {/* Отказ оформлен, а деньги клиенту ещё у нас — подсказка, как закрыть баланс в ноль */}
+              {t.cancelled && paidTotal > 0 && (
+                <div style={{ background: 'rgba(192,57,43,.1)', color: '#c0392b', borderRadius: 16, padding: '11px 16px', fontSize: 13.5, marginTop: 14, fontWeight: 600 }}>
+                  Клиенту нужно вернуть {fmt(paidTotal)} — в Финансах: Расход → «Возврат» → привязать к этой задаче. После этого баланс задачи станет нулевым.
                 </div>
               )}
 
@@ -723,9 +768,15 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                     border: 'none', background: UI.soft, borderRadius: 999, padding: '13px 18px', fontWeight: 700, fontSize: 14,
                   }}>↩ Вернуть в работу</button>
                 ) : (
-                  <button onClick={() => finishTask(t)} style={{
-                    border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '13px 18px', fontWeight: 800, fontSize: 14,
-                  }}>✓ Заказ выдан</button>
+                  <>
+                    <button onClick={() => finishTask(t)} style={{
+                      border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '13px 18px', fontWeight: 800, fontSize: 14,
+                    }}>✓ Заказ выдан</button>
+                    {/* Клиент отказался: заказа больше нет — закрываем без долга (2026-08-13) */}
+                    <button onClick={() => cancelTask(t)} title="Клиент отказался от заказа — закрыть без долга" style={{
+                      border: 'none', background: 'rgba(192,57,43,.1)', color: '#c0392b', borderRadius: 999, padding: '13px 18px', fontWeight: 700, fontSize: 14,
+                    }}>✕ Отказ</button>
+                  </>
                 ))}
                 <button onClick={() => repeatTask(t)} style={{
                   border: 'none', background: UI.soft, borderRadius: 999, padding: '13px 18px', fontWeight: 700, fontSize: 14,

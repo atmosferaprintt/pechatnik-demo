@@ -2,6 +2,7 @@
 // Фильтр «должники» показывает только клиентов с незакрытыми долгами. Заглушка на демо-данных.
 import { useState } from 'react';
 import I from '../Icon.jsx';
+import { debtOfTask } from '../taskMoney.js';
 
 const fmt = (n) => (n || 0).toLocaleString('ru-RU');
 const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
@@ -50,11 +51,18 @@ export default function Clients({ clients, tasks, transactions, categories, db, 
     const taskIds = new Set(clientTasks(id).map(t => t.id));
     return transactions.filter(t => t.type === 'income' && (t.client_id === id || taskIds.has(t.task_id)));
   };
-  // hidden_paid — оплаты вне RLS-окна сотрудницы (App.jsx/018), без него старые оплаты «слетали»
-  const paidByTask = (t) => (t.hidden_paid || 0) + transactions.filter(x => x.task_id === t.id && x.type === 'income').reduce((s, x) => s + x.amount, 0);
-  const clientDebt = (id) => clientTasks(id).reduce((s, t) => s + Math.max(0, (t.amount || 0) - paidByTask(t)), 0);
+  // Возвраты клиенту — расходы, привязанные к его задачам (2026-08-13)
+  const clientRefunds = (id) => {
+    const taskIds = new Set(clientTasks(id).map(t => t.id));
+    return transactions.filter(t => t.type === 'expense' && taskIds.has(t.task_id));
+  };
+  // Долг по задаче — общий src/taskMoney.js: приходы минус возвраты клиенту,
+  // со скрытыми от сотрудницы строками (hidden_*, 023); у отказных задач долга нет
+  const clientDebt = (id) => clientTasks(id).reduce((s, t) => s + Math.max(0, debtOfTask(transactions, t)), 0);
+  // «Оплатил всего» — за вычетом возвращённого: отказавшийся клиент не должен числиться плательщиком
   const clientTotal = (id) => clientPayments(id).reduce((s, t) => s + t.amount, 0)
-    + clientTasks(id).reduce((s, t) => s + (t.hidden_paid || 0), 0);
+    - clientRefunds(id).reduce((s, t) => s + t.amount, 0)
+    + clientTasks(id).reduce((s, t) => s + (t.hidden_paid || 0) - (t.hidden_refund || 0), 0);
   const catName = (id) => categories.find(c => c.id === id)?.name || '?';
 
   const filtered = clients.filter(c =>
@@ -179,6 +187,7 @@ export default function Clients({ clients, tasks, transactions, categories, db, 
         const c = clients.find(x => x.id === openClient.id) || openClient;
         const ct = clientTasks(c.id);
         const cp = clientPayments(c.id);
+        const cr = clientRefunds(c.id);
         const debt = clientDebt(c.id);
         return (
           <div onClick={() => setOpenClient(null)} style={{
@@ -230,13 +239,15 @@ export default function Clients({ clients, tasks, transactions, categories, db, 
 
               <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Задачи</div>
               {ct.length ? ct.map(t => {
-                const d = Math.max(0, (t.amount || 0) - paidByTask(t));
+                const d = Math.max(0, debtOfTask(transactions, t));
                 return (
                   <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
                     <span style={{ fontWeight: 600 }}>{t.title}</span>
                     <span style={{ background: UI.soft, borderRadius: 999, padding: '3px 10px', fontSize: 12 }}>у {t.assignee}</span>
                     <span style={{ marginLeft: 'auto', fontWeight: 700 }}>{fmt(t.amount)} ₽</span>
-                    {d > 0
+                    {t.cancelled
+                      ? <span style={{ background: UI.soft, color: UI.muted, borderRadius: 999, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>✕ отказ</span>
+                      : d > 0
                       ? <span className="blink" style={{ background: '#c0392b', color: '#fff', borderRadius: 999, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>долг {fmt(d)}</span>
                       : <span style={{ background: 'rgba(247,214,74,.5)', borderRadius: 999, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>✓</span>}
                   </div>
@@ -244,12 +255,13 @@ export default function Clients({ clients, tasks, transactions, categories, db, 
               }) : <div style={{ color: UI.muted, fontSize: 13.5 }}>Задач пока нет</div>}
 
               <div style={{ fontWeight: 800, fontSize: 14, margin: '16px 0 6px' }}>Оплаты</div>
-              {cp.length ? cp.map(p => (
-                <div key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
-                  <I n="income" size={13} style={{ color: '#8a8a85' }} />
+              {/* Возвраты клиенту — в том же списке со знаком минус (2026-08-13) */}
+              {cp.length || cr.length ? [...cp.map(p => ({ ...p, refund: false })), ...cr.map(p => ({ ...p, refund: true }))].map(p => (
+                <div key={`${p.refund ? 'r' : 'p'}${p.id}`} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 2px', borderBottom: `1px solid ${UI.line}`, fontSize: 14 }}>
+                  <I n={p.refund ? 'expense' : 'income'} size={13} style={{ color: p.refund ? '#c0392b' : '#8a8a85' }} />
                   <span style={{ fontWeight: 600 }}>{catName(p.category_id)}</span>
                   <span style={{ color: UI.muted, fontSize: 12.5 }}>{dm(p.op_date)} · {p.created_by}</span>
-                  <span style={{ marginLeft: 'auto', fontWeight: 700 }}>+{fmt(p.amount)} ₽</span>
+                  <span style={{ marginLeft: 'auto', fontWeight: 700, color: p.refund ? '#c0392b' : UI.dark }}>{p.refund ? '−' : '+'}{fmt(p.amount)} ₽</span>
                 </div>
               )) : <div style={{ color: UI.muted, fontSize: 13.5 }}>Оплат пока нет</div>}
             </div>

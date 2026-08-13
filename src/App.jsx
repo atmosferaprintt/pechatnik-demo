@@ -315,17 +315,20 @@ export default function App() {
         loadAllRows('notes'),
       ]);
       const txLog = await loadAllRows('transaction_log');
-      // Оплаты по задачам, которые сотруднице не видны (RLS-окно 7 дней, 016): без них оплаты
-      // старше недели «слетали» и долг возвращался (жалобы 2026-07-31). Функция 021 отдаёт их
-      // построчно (дата/сумма/способ/кто — просьба Кристи 2026-08-03 расписывать оплаты
-      // в карточке); у владельца — пусто (он видит всё сам). Итоги paid/cnt считаем из строк.
+      // Оплаты и возвраты по задачам, которые сотруднице не видны (RLS-окно 7 дней, 016):
+      // без них оплаты старше недели «слетали» и долг возвращался (жалобы 2026-07-31).
+      // Функция отдаёт их построчно (дата/сумма/способ/кто — просьба Кристи 2026-08-03
+      // расписывать оплаты в карточке), с 023 — вместе с возвратами клиенту (расход с task_id);
+      // у владельца пусто (он видит всё сам). Итоги paid/refund/cnt считаем из строк.
       const { data: hidRows, error: hidErr } = await supabase.rpc('task_payment_rows');
       if (hidErr) throw hidErr;
       const hidPaid = {};
       (hidRows || []).forEach(r => {
-        const h = hidPaid[r.task_id] ??= { paid: 0, cnt: 0, rows: [] };
-        h.paid += +r.amount || 0; h.cnt += 1;
-        h.rows.push({ date: r.op_date, amount: +r.amount || 0, method: r.payment_method, bank: r.bank, who: r.who });
+        const h = hidPaid[r.task_id] ??= { paid: 0, refund: 0, cnt: 0, rows: [] };
+        const amount = +r.amount || 0;
+        if (r.tx_type === 'expense') h.refund += amount; else h.paid += amount;
+        h.cnt += 1;
+        h.rows.push({ type: r.tx_type, date: r.op_date, amount, method: r.payment_method, bank: r.bank, who: r.who });
       });
       // Переносы кассы по закрытиям, невидимым сотруднице (RLS «сегодня+вчера», 002):
       // при закрытии вчерашней смены наутро позавчерашнее закрытие выпадало из окна,
@@ -350,7 +353,8 @@ export default function App() {
       setContractorTasks(ctrT.map(t => ({ ...t, amount: t.amount == null ? null : +t.amount, paid: +t.paid || 0 })));
       setTasks(ts.map(t => ({
         ...t, amount: t.amount == null ? null : +t.amount, parts: t.parts || [],
-        hidden_paid: hidPaid[t.id]?.paid || 0, hidden_cnt: hidPaid[t.id]?.cnt || 0, hidden_rows: hidPaid[t.id]?.rows || [],
+        hidden_paid: hidPaid[t.id]?.paid || 0, hidden_refund: hidPaid[t.id]?.refund || 0,
+        hidden_cnt: hidPaid[t.id]?.cnt || 0, hidden_rows: hidPaid[t.id]?.rows || [],
         created_at: dOnly(t.created_at),
         log: logs.filter(l => l.task_id === t.id).map(l => ({ who: l.who, action: l.action, time: logT(l.created_at) })),
       })));

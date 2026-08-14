@@ -554,8 +554,11 @@ function EmployeeView(props) {
                   <span style={{ background: UI.soft, borderRadius: 999, padding: '2px 9px', fontSize: 11.5 }}>{mLabel(t0.payment_method)}{t0.bank_id ? ` · ${bankName(t0.bank_id)}` : ''}</span>
                   {t0.moved_from && <span style={{ background: 'rgba(247,214,74,.4)', borderRadius: 999, padding: '2px 9px', fontSize: 11.5, fontWeight: 700 }}>↪ со вчера</span>}
                   <span style={{ color: UI.muted, fontSize: 12.5 }}>{t0.comment}</span>
-                  {/* Хвост строки: кнопки ДО цифр, сумма и аватар фиксированной ширины — цифры выровнены */}
+                  {/* Хвост строки: время, кнопки ДО цифр, сумма и аватар фиксированной ширины — цифры выровнены.
+                      Время видно и сотрудницам (просьба Кристи 2026-08-14: «когда суммы ищем при сверке,
+                      только я могу по времени отследить») */}
                   <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                    <span style={{ color: UI.muted, fontSize: 12 }}>{t0.time}</span>
                     {!isBatch && rowButtons(t0)}
                     <span style={{ minWidth: 86, textAlign: 'right', fontWeight: 700, color: t0.type === 'expense' ? '#c0392b' : UI.dark }}>
                       {t0.type === 'income' ? '+' : '−'}{fmt(total)} ₽

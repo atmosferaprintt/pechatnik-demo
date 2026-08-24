@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import useIsMobile from './mobile/useIsMobile.js';
+import MobileApp from './mobile/MobileApp.jsx';
 import I from './Icon.jsx';
 import { localDate, localHM } from './dates.js';
 
@@ -946,6 +947,29 @@ export default function App() {
     loading, UI, STAGES, PAYMENT_METHODS, DEMO, isMobile,
   };
 
+  // Телефон — отдельное дерево src/mobile/ со своей навигацией (таб-бар снизу).
+  // Данные, права и db-методы те же: ниже идёт только десктопная отрисовка.
+  if (isMobile) {
+    return (
+      <>
+        <MobileApp
+          {...sectionProps}
+          workMode={workMode} toggleWorkMode={toggleWorkMode}
+          refreshing={refreshing}
+          onRefresh={async () => {
+            if (refreshing) return;
+            setRefreshing(true);
+            try { await loadAll(); showToast('Данные обновлены ✓'); } finally { setRefreshing(false); }
+          }}
+          onSignOut={() => { setPayTaskId(null); supabase.auth.signOut(); }}
+          demoSwitchRole={demoSwitchRole}
+        />
+        {/* Над таб-баром, иначе тост ложится прямо на кнопки навигации */}
+        {toast && <Toast toast={toast} UI={UI} bottom="calc(env(safe-area-inset-bottom, 0px) + 78px)" />}
+      </>
+    );
+  }
+
   return (
     <div style={{ minHeight: '100vh', padding: isMobile ? '12px 12px 32px' : '20px 28px 40px', maxWidth: 1400, margin: '0 auto' }}>
       <header style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16, marginBottom: isMobile ? 16 : 28, flexWrap: 'wrap' }}>
@@ -1024,14 +1048,19 @@ export default function App() {
         {tab === 'settings' && isOwner && <Settings {...sectionProps} />}
       </main>
 
-      {toast && (
-        <div style={{
-          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-          background: toast.type === 'error' ? '#c0392b' : UI.dark, color: '#fff',
-          padding: '12px 24px', borderRadius: 999, boxShadow: UI.shadow, zIndex: 1000, fontSize: 14,
-        }}>{toast.msg}</div>
-      )}
+      {toast && <Toast toast={toast} UI={UI} />}
     </div>
+  );
+}
+
+function Toast({ toast, UI, bottom = 24 }) {
+  return (
+    <div style={{
+      position: 'fixed', bottom, left: '50%', transform: 'translateX(-50%)',
+      background: toast.type === 'error' ? '#c0392b' : UI.dark, color: '#fff',
+      padding: '12px 24px', borderRadius: 999, boxShadow: UI.shadow, zIndex: 1000, fontSize: 14,
+      maxWidth: 'calc(100% - 28px)', textAlign: 'center',
+    }}>{toast.msg}</div>
   );
 }
 

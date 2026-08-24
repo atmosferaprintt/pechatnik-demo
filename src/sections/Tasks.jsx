@@ -10,6 +10,8 @@ import I from '../Icon.jsx';
 import CatPicker from '../CatPicker.jsx';
 import { localDate } from '../dates.js';
 import { taskIncomeRows, taskRefundRows, paidOfTask, debtOfTask } from '../taskMoney.js';
+import * as act from '../taskActions.js';
+import { deadlineStatus, ACTION_PRESETS } from '../taskStatus.js';
 
 const fmt = (n) => (n || 0).toLocaleString('ru-RU') + ' ₽';
 const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
@@ -17,19 +19,6 @@ const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
 const TODAY = localDate();
 const TOMORROW = localDate(new Date(Date.now() + 86400000));
 const NOW = () => `${dm(TODAY)} ${new Date().toTimeString().slice(0, 5)}`;
-
-// Быстрые отметки действий на задаче
-const ACTION_PRESETS = ['приняла', 'подготовила к печати', 'распечатала', 'постпечатка', 'готово к выдаче'];
-
-// Статус срока: overdue — просрочен, soon — сегодня/завтра.
-// Не тревожим завершённые и те, где последняя отметка — «готово к выдаче» (работа сделана, ждём клиента).
-function deadlineStatus(t) {
-  const last = t.log?.length ? t.log[t.log.length - 1].action : '';
-  if (!t.deadline || t.done || t.stage === 'Готово' || last.includes('готово к выдаче')) return 'ok';
-  if (t.deadline < TODAY) return 'overdue';
-  if (t.deadline <= TOMORROW) return 'soon';
-  return 'ok';
-}
 
 export default function Tasks({ tasks, clients, contractors, transactions, categories, banks, PAYMENT_METHODS, currentUser, isOwner, isOwnerAccount, db, PEOPLE_COLUMNS, STAGES, UI, showToast, onPayTask }) {
   const [openTask, setOpenTask] = useState(null);
@@ -89,38 +78,26 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
   const debtTasks = tasks.filter(t => t.done && taskDebt(t) > 0 && matches(t));
   const doneTasks = tasks.filter(t => t.done && taskDebt(t) <= 0 && matches(t));
 
+  // Сами действия и тексты в истории задачи — общий src/taskActions.js: тем же кодом
+  // пользуется мобильная версия, иначе история «кто что сделал» разъедется
+  const ctx = { db, currentUser, showToast };
+
   const finishTask = (task, e) => {
     e?.stopPropagation();
-    const debt = taskDebt(task);
-    db.updateTask(task, { done: true }, { who: currentUser.name, action: '✓ завершила' });
+    act.finishTask(ctx, task, transactions);
     setOpenTask(null);
-    showToast(debt > 0 ? `«${task.title}» выдана, долг ${fmt(debt)} → Долги` : `«${task.title}» выдана и закрыта ✓`);
   };
 
-  const reopenTask = (task) => {
-    // Возврат в работу снимает и отказ: заказ снова живой, сумма к оплате прежняя
-    db.updateTask(task, { done: false, cancelled: false }, { who: currentUser.name, action: '↩ вернула в работу' });
-    showToast(`«${task.title}» снова в работе ↩`);
-  };
+  const reopenTask = (task) => act.reopenTask(ctx, task);
 
-  // Отказ клиента (2026-08-13, «кепки»): заказа больше нет — к оплате 0, задача закрывается
-  // без долга. Деньги, которые клиент успел внести, возвращаются расходом «Возврат»
-  // с привязкой к этой задаче — тогда «оплачено» по ней тоже уходит в ноль.
   const cancelTask = (task) => {
-    const paid = paidSum(task.id);
-    db.updateTask(task, { done: true, cancelled: true }, { who: currentUser.name, action: '✕ отказ клиента' });
+    act.cancelTask(ctx, task, transactions);
     setOpenTask(null);
-    showToast(paid > 0
-      ? `«${task.title}» — отказ. Осталось вернуть клиенту ${fmt(paid)}: запиши расход «Возврат» и привяжи к задаче`
-      : `«${task.title}» — отказ клиента, закрыта без долга ✓`);
   };
 
   const stageMove = (task, dir, e) => {
     e?.stopPropagation();
-    const i = STAGES.indexOf(task.stage || 'Новая') + dir;
-    if (i < 0 || i >= STAGES.length) return;
-    db.updateTask(task, { stage: STAGES[i] }, { who: currentUser.name, action: `→ этап: ${STAGES[i]}` });
-    showToast(`«${task.title}» → ${STAGES[i]}`);
+    act.moveStage(ctx, task, dir, STAGES);
   };
 
   // Перетаскивание карточек: вверх/вниз внутри колонки (очередь) и между колонками (смена этапа).
@@ -177,18 +154,8 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
 
   const DropLine = () => <div style={{ height: 4, background: UI.accent, borderRadius: 99, margin: '0 4px 7px', boxShadow: '0 0 0 1px rgba(29,29,31,.08)' }} />;
 
-  // Передать задачу другому человеку — с записью в историю
-  const transfer = (task, to) => {
-    if (!to || to === task.assignee) return;
-    db.updateTask(task, { assignee: to }, { who: task.assignee, action: `→ передала: ${to}` });
-    showToast(`«${task.title}» → ${to}`);
-  };
-
-  // Отметка действия (бейдж) — пишется в историю от имени текущего пользователя
-  const addAction = (task, action) => {
-    db.addTaskLog(task, action);
-    showToast(`Отметка: ${action} ✓`);
-  };
+  const transfer = (task, to) => act.transferTask(ctx, task, to);
+  const addAction = (task, action) => act.addAction(ctx, task, action);
 
   const openEdit = (t) => {
     setEditTask(t);
@@ -200,71 +167,29 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
     setShowNew(true);
   };
 
+  // Сохранение (включая клиента «на лету» и запись диффа в историю) — общий src/taskActions.js
   const createTask = async () => {
     if (saving) return;
-    if (!nTitle.trim()) { showToast('Укажи название задачи', 'error'); return; }
     setSaving(true);
     try {
-
-    // Клиент: выбранный или создаём на месте — и он сразу летит в базу клиентов
-    let clientId = nClient && nClient !== '__new' ? +nClient : null;
-    if (nClient === '__new') {
-      if (!ncFio.trim()) { showToast('Укажи имя клиента', 'error'); return; }
-      const norm = ncPhone.replace(/\D/g, '').slice(-10);
-      const existing = norm && clients.find(c => c.phone_norm === norm);
-      if (existing) {
-        clientId = existing.id;
-        showToast(`Такой телефон уже есть — привязала к «${existing.name}»`);
-      } else {
-        const name = ncCompany.trim() ? `${ncFio.trim()} · ${ncCompany.trim()}` : ncFio.trim();
-        const createdClient = await db.addClient({ name, phone: ncPhone.trim(), instagram: '', note: '' });
-        if (!createdClient) return;
-        clientId = createdClient.id;
-      }
-    }
-
-    const parts = nParts.filter(p => p.name.trim() && +p.sum > 0).map(p => ({ name: p.name.trim(), amount: +p.sum }));
-    const amount = parts.length ? parts.reduce((s, p) => s + p.amount, 0) : (+nAmount || null);
-    const payload = {
-      title: nTitle.trim(), client_id: clientId, amount, parts,
-      deadline: nDeadline || null, assignee: nAssignee || currentUser.name,
-      contractor_id: nContractor ? +nContractor : null, description: nDesc.trim(),
-    };
-
-    if (editTask) {
-      // Правка существующей задачи — НЕ создание новой. В историю пишем, ЧТО изменилось.
-      const diffs = [];
-      if (payload.title !== editTask.title) diffs.push(`название «${editTask.title}» → «${payload.title}»`);
-      if ((payload.amount || 0) !== (editTask.amount || 0)) diffs.push(`сумма ${editTask.amount || 0} → ${payload.amount || 0} ₽`);
-      if ((payload.deadline || '') !== (editTask.deadline || '')) diffs.push(`дедлайн → ${payload.deadline ? dm(payload.deadline) : 'убран'}`);
-      if ((payload.client_id || null) !== (editTask.client_id || null)) diffs.push('клиент');
-      if ((payload.contractor_id || null) !== (editTask.contractor_id || null)) diffs.push('контрагент');
-      if ((payload.assignee || '') !== (editTask.assignee || '')) diffs.push(`задачник → ${payload.assignee}`);
-      if ((payload.description || '') !== (editTask.description || '')) diffs.push('описание');
-      if (JSON.stringify(payload.parts) !== JSON.stringify(editTask.parts || [])) diffs.push('состав заказа');
-      const action = diffs.length ? `изменила: ${diffs.join(', ')}` : 'изменила задачу';
-      const ok = await db.updateTask(editTask, payload, { who: currentUser.name, action });
+      const ok = await act.saveTask({ db, currentUser, showToast, clients }, {
+        editTask,
+        values: {
+          title: nTitle, clientSel: nClient, newClient: { fio: ncFio, phone: ncPhone, company: ncCompany },
+          amount: nAmount, parts: nParts, deadline: nDeadline, assignee: nAssignee,
+          contractorId: nContractor, description: nDesc,
+        },
+      });
       if (!ok) return;
-      showToast('Задача исправлена ✓');
-    } else {
-      const created = await db.addTask(payload);
-      if (!created) return;
-      showToast(`Задача создана → ${created.assignee} ✓`);
-    }
-    setShowNew(false); setEditTask(null);
-    setNTitle(''); setNClient(''); setNAmount(''); setNDeadline(''); setNAssignee(''); setNContractor(''); setNDesc(''); setNParts([]);
-    setNcFio(''); setNcPhone(''); setNcCompany('');
+      setShowNew(false); setEditTask(null);
+      setNTitle(''); setNClient(''); setNAmount(''); setNDeadline(''); setNAssignee(''); setNContractor(''); setNDesc(''); setNParts([]);
+      setNcFio(''); setNcPhone(''); setNcCompany('');
     } finally { setSaving(false); }
   };
 
   const repeatTask = (t) => {
-    db.addTask({
-      title: t.title, description: t.description, client_id: t.client_id, contractor_id: t.contractor_id,
-      amount: t.amount, parts: t.parts || [], deadline: null, assignee: currentUser.name,
-      _firstAction: 'повторный заказ (копия)',
-    });
+    act.repeatTask(ctx, t);
     setOpenTask(null);
-    showToast(`«${t.title}» скопирована к тебе`);
   };
 
   // Чип статуса оплаты: ✓ оплачено / долг / переплата (small — компактный вариант для карточек доски)

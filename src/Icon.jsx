@@ -28,6 +28,16 @@ const PATHS = {
   user: <><circle cx="12" cy="8" r="3.6" /><path d="M5 20.5a7 7 0 0 1 14 0" /></>,
   wallet: <><path d="M20 7H5a2 2 0 0 1 0-4h13v4" /><path d="M3 5v14a2 2 0 0 0 2 2h15V7" /><path d="M16 13h.5" /></>,
   send: <><path d="m4.5 12 15-7-4 14-4.5-5L4.5 12z" /><path d="m11 14 8.5-9" /></>,
+  // Добавлены для мобильной версии (таб-бар, шиты, шаги этапов)
+  home: <><path d="m3 10.5 9-7.5 9 7.5" /><path d="M5.5 9.5V21h13V9.5" /><path d="M10 21v-6h4v6" /></>,
+  check: <><path d="m4 12.5 5.5 5.5L20 6.5" /></>,
+  plus: <><path d="M12 5v14M5 12h14" /></>,
+  dots: <><circle cx="5" cy="12" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="19" cy="12" r="1.4" /></>,
+  chevronLeft: <><path d="m15 5-7 7 7 7" /></>,
+  chevronRight: <><path d="m9 5 7 7-7 7" /></>,
+  x: <><path d="M6 6l12 12M18 6 6 18" /></>,
+  phone: <><path d="M4.5 3.5h4l2 5-2.5 1.5a12 12 0 0 0 6 6L15.5 13.5l5 2v4a1.5 1.5 0 0 1-1.7 1.5A16.5 16.5 0 0 1 3 5.2 1.5 1.5 0 0 1 4.5 3.5z" /></>,
+  logout: <><path d="M14 3.5H6a1.5 1.5 0 0 0-1.5 1.5v14A1.5 1.5 0 0 0 6 20.5h8" /><path d="m16 8 4 4-4 4" /><path d="M20 12H9.5" /></>,
 };
 
 export default function I({ n, size = 15, style }) {

@@ -10,8 +10,7 @@ import MMore from './screens/MMore.jsx';
 import MTasks from './screens/MTasks.jsx';
 import MFinance from './screens/MFinance.jsx';
 
-// Разделы, которые пока отрисовываются десктопными секциями (заменяются по одному).
-import Clients from '../sections/Clients.jsx';
+import MClients from './screens/MClients.jsx';
 
 export default function MobileApp(props) {
   // onSignOut уходит в «Ещё» вместе с остальными пропсами
@@ -34,7 +33,7 @@ export default function MobileApp(props) {
     switch (tab) {
       case 'home': return <MHome {...props} onTab={openTab} onSub={setSub} />;
       case 'tasks': return <MTasks {...props} onPayTask={(t) => { setPayTaskId(t.id); setTab('finance'); }} />;
-      case 'clients': return <Clients {...props} />;
+      case 'clients': return <MClients {...props} />;
       case 'finance': return <MFinance {...props} prefillTaskId={payTaskId} />;
       case 'more': return <MMore {...props} sub={null} onSub={setSub} onTab={openTab} />;
       default: return null;

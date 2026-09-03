@@ -1,8 +1,8 @@
 // Раздел «Аналитика» — только владелец. Реальные агрегаты по операциям за выбранный месяц.
 // Экспорт месяца в Excel — в привычной Кристи структуре: категории × дни месяца.
+// Все расчёты и сам Excel живут в общем src/monthStats.js: те же цифры показывает телефон.
 import { useState } from 'react';
-
-const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+import { monthStats, exportMonthExcel, monthLabel as monthLabelOf, shiftMonth as shiftMonthBy } from '../monthStats.js';
 
 export default function Analytics({ UI, transactions, categories, dayClosures, db, showToast }) {
   const fmt = (n) => Math.round(n).toLocaleString('ru-RU');
@@ -12,100 +12,33 @@ export default function Analytics({ UI, transactions, categories, dayClosures, d
   const [expView, setExpView] = useState(''); // '' | work | personal
   const [xlsBusy, setXlsBusy] = useState(false); // подгружается библиотека Excel
 
-  const monthTx = transactions.filter(t => t.op_date?.startsWith(month));
-  const kindOf = (t) => categories.find(c => c.id === t.category_id)?.kind;
+  const {
+    monthTx, opIncome, diffSum, income, expense, personalTotal, profit,
+    cats, workBreak, persBreak, methods: methodSums, staff,
+  } = monthStats({ transactions, categories, dayClosures, month });
 
-  // Доходы — без оплат «Депозитом» (деньги пришли при внесении депозита)
-  const incomeTx = monthTx.filter(t => t.type === 'income' && t.payment_method !== 'deposit');
-  const opIncome = incomeTx.reduce((s, t) => s + t.amount, 0);
-  // Разницы смен (решение Кристи 2026-07-17): плюс — в выручку, минус — из выручки
-  const diffSum = dayClosures.filter(c => c.date?.startsWith(month)).reduce((s, c) => s + (c.diff || 0), 0);
-  const income = opIncome + diffSum;
-  const personalTotal = monthTx.filter(t => t.type === 'expense' && kindOf(t) === 'expense_personal').reduce((s, t) => s + t.amount, 0);
-  const expense = monthTx.filter(t => t.type === 'expense' && kindOf(t) !== 'expense_personal').reduce((s, t) => s + t.amount, 0);
-  const profit = income - expense;
-
-  // Расходы по категориям: рабочие (операционка + крупные) и личные — раскрываются кликом по карточкам
-  const expCatSum = (c) => monthTx.filter(t => t.type === 'expense' && t.category_id === c.id).reduce((s, t) => s + t.amount, 0);
-  const workBreak = categories.filter(c => c.kind === 'expense_shared' || c.kind === 'expense_work')
-    .map(c => ({ name: c.name, big: c.kind === 'expense_work', v: expCatSum(c) }))
-    .filter(c => c.v > 0).sort((a, b) => b.v - a.v);
-  const persBreak = categories.filter(c => c.kind === 'expense_personal')
-    .map(c => ({ name: c.name, v: expCatSum(c) }))
-    .filter(c => c.v > 0).sort((a, b) => b.v - a.v);
-
-  // Доходы по категориям
-  const cats = categories.filter(c => c.kind === 'income')
-    .map(c => ({ name: c.name, v: incomeTx.filter(t => t.category_id === c.id).reduce((s, t) => s + t.amount, 0) }))
-    .filter(c => c.v > 0).sort((a, b) => b.v - a.v);
   const max = Math.max(1, ...cats.map(c => c.v));
-
-  // Способы оплаты (доли дохода)
-  const M_LABELS = { cash: ['Наличные', UI.dark], sbp: ['СБП', UI.accent], transfer: ['Переводы', '#e8c33f'], card: ['Карта', '#d9d9d6'], bank: ['Безнал', '#b9b5a8'] };
-  const methods = Object.entries(M_LABELS).map(([k, [name, color]]) => ({
-    name, color, sum: incomeTx.filter(t => t.payment_method === k).reduce((s, t) => s + t.amount, 0),
-  })).filter(m => m.sum > 0).map(m => ({ ...m, v: income ? Math.round((m.sum / income) * 100) : 0 }));
-
-  // Выручка по сотрудникам (кто записал доход)
-  const staff = [...new Set(incomeTx.map(t => t.created_by))]
-    .map(name => ({ name, v: incomeTx.filter(t => t.created_by === name).reduce((s, t) => s + t.amount, 0) }))
-    .sort((a, b) => b.v - a.v);
   const maxStaff = Math.max(1, ...staff.map(s => s.v));
 
-  const shiftMonth = (dir) => {
-    const [y, m] = month.split('-').map(Number);
-    const d = new Date(y, m - 1 + dir, 1);
-    setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-  };
+  // Цвета способов оплаты — оформление десктопной версии, сами суммы считает monthStats
+  const M_COLORS = { cash: UI.dark, sbp: UI.accent, transfer: '#e8c33f', card: '#d9d9d6', bank: '#b9b5a8' };
+  const methods = methodSums.map(m => ({ ...m, color: M_COLORS[m.key] }));
 
-  // Библиотека xlsx весит 95 КБ в сжатом виде — треть всей загрузки CRM,
-  // а нужна только здесь и только владельцу. Поэтому подгружается по нажатию,
-  // а не при каждом входе (важно на медленном интернете и через VPN).
+  const shiftMonth = (dir) => setMonth(shiftMonthBy(month, dir));
+
   const exportExcel = async () => {
     if (xlsBusy) return;
     setXlsBusy(true);
     try {
-    const XLSX = await import('xlsx');
-    const [y, m] = month.split('-').map(Number);
-    const daysInMonth = new Date(y, m, 0).getDate();
-    const cell = (catId, type, day) => monthTx
-      .filter(t => t.category_id === catId && t.type === type && +t.op_date.slice(8, 10) === day)
-      .reduce((s, t) => s + t.amount, 0) || '';
-
-    const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-    const rows = [];
-
-    rows.push(['ДОХОД ОБЩИЙ', income, ...days.map(() => '')]);
-    for (const c of categories.filter(c => c.kind === 'income')) {
-      const total = incomeTx.filter(t => t.category_id === c.id).reduce((s, t) => s + t.amount, 0);
-      rows.push([c.name, total || '', ...days.map(d => cell(c.id, 'income', d))]);
-    }
-    // Расходы бизнеса и личные — отдельными блоками, как в таблице Кристи
-    const catTotal = (c) => monthTx.filter(t => t.category_id === c.id && t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-    const personalCats = categories.filter(c => c.kind === 'expense_personal');
-    const workCats = categories.filter(c => c.kind === 'expense_shared' || c.kind === 'expense_work');
-
-    rows.push([]);
-    rows.push(['РАСХОД ОБЩИЙ', workCats.reduce((s, c) => s + catTotal(c), 0), ...days.map(() => '')]);
-    for (const c of workCats) rows.push([c.name, catTotal(c) || '', ...days.map(d => cell(c.id, 'expense', d))]);
-
-    rows.push([]);
-    rows.push(['ЛИЧНЫЕ', personalCats.reduce((s, c) => s + catTotal(c), 0), ...days.map(() => '')]);
-    for (const c of personalCats) rows.push([c.name, catTotal(c) || '', ...days.map(d => cell(c.id, 'expense', d))]);
-
-    const ws = XLSX.utils.aoa_to_sheet([['Категория', 'Итого', ...days], ...rows]);
-    ws['!cols'] = [{ wch: 24 }, { wch: 10 }, ...days.map(() => ({ wch: 7 }))];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, MONTHS[m - 1]);
-    XLSX.writeFile(wb, `ПЕЧАТНИК-${MONTHS[m - 1]}-${y}.xlsx`);
-    showToast('Excel выгружен');
+      await exportMonthExcel({ month, transactions, categories, dayClosures });
+      showToast('Excel выгружен');
     } catch (e) {
       console.error(e);
       showToast('Не получилось собрать Excel — попробуй ещё раз', 'error');
     } finally { setXlsBusy(false); }
   };
 
-  const monthLabel = `${MONTHS[+month.slice(5) - 1]} ${month.slice(0, 4)}`;
+  const monthLabel = monthLabelOf(month);
 
   return (
     <div>

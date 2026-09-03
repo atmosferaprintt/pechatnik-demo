@@ -1,30 +1,34 @@
 // «Ещё» — всё, что не поместилось в таб-бар: контрагенты, депозиты, поставка, заметки,
 // у владельца ещё аналитика и настройки. Плюс режим работы и выход.
-// Разделы пока открываются десктопными секциями внутри мобильной оболочки — их
-// мобильные версии делаются по одной, и подмена происходит здесь, в одной таблице SECTIONS.
+// Каждый раздел — свой мобильный экран; какой именно, задаёт таблица SECTIONS ниже.
+import { useEffect } from 'react';
 import I from '../../Icon.jsx';
 import { M, Card, Row, Btn } from '../ui.jsx';
 
-import Contractors from '../../sections/Contractors.jsx';
-import Deposits from '../../sections/Deposits.jsx';
-import Supply from '../../sections/Supply.jsx';
-import Notes from '../../sections/Notes.jsx';
-import Analytics from '../../sections/Analytics.jsx';
-import Settings from '../../sections/Settings.jsx';
+import MContractors from './MContractors.jsx';
+import MDeposits from './MDeposits.jsx';
+import MSupply from './MSupply.jsx';
+import MNotes from './MNotes.jsx';
+import MAnalytics from './MAnalytics.jsx';
+import MSettings from './MSettings.jsx';
 
 const SECTIONS = [
-  { key: 'contractors', label: 'Контрагенты', hint: 'подрядчики и перезаказы', icon: 'factory', C: Contractors, owner: false },
-  { key: 'deposits', label: 'Депозиты и долги', hint: 'бюджетники и мелкие должники', icon: 'wallet', C: Deposits, owner: false },
-  { key: 'supply', label: 'Поставка', hint: 'что нужно купить', icon: 'cart', C: Supply, owner: false },
-  { key: 'notes', label: 'Заметки', hint: 'общая доска', icon: 'note', C: Notes, owner: false },
-  { key: 'analytics', label: 'Аналитика', hint: 'месяц, прибыль, выгрузка', icon: 'chart', C: Analytics, owner: true },
-  { key: 'settings', label: 'Настройки', hint: 'категории, сотрудники, карты', icon: 'lock', C: Settings, owner: true },
+  { key: 'contractors', label: 'Контрагенты', hint: 'подрядчики и перезаказы', icon: 'factory', C: MContractors, owner: false },
+  { key: 'deposits', label: 'Депозиты и долги', hint: 'бюджетники и мелкие должники', icon: 'wallet', C: MDeposits, owner: false },
+  { key: 'supply', label: 'Поставка', hint: 'что нужно купить', icon: 'cart', C: MSupply, owner: false },
+  { key: 'notes', label: 'Заметки', hint: 'общая доска', icon: 'note', C: MNotes, owner: false },
+  { key: 'analytics', label: 'Аналитика', hint: 'месяц, прибыль, выгрузка', icon: 'chart', C: MAnalytics, owner: true },
+  { key: 'settings', label: 'Настройки', hint: 'категории, сотрудники, карты', icon: 'lock', C: MSettings, owner: true },
 ];
 
 export default function MMore(props) {
   const { sub, onSub, isOwner, isOwnerAccount, workMode, toggleWorkMode, currentUser, userRole, onSignOut, DEMO } = props;
 
-  const open = SECTIONS.find(s => s.key === sub);
+  // Владельческий раздел закрывается сам, если прав не стало: Кристи переключилась в режим
+  // за стойкой (или сменился пользователь) прямо из открытой Аналитики/Настроек.
+  const open = SECTIONS.find(s => s.key === sub && (!s.owner || isOwner));
+  useEffect(() => { if (sub && !open) onSub(null); }, [sub, open, onSub]);
+
   if (open) {
     const C = open.C;
     return (

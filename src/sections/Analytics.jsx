@@ -1,7 +1,6 @@
 // Раздел «Аналитика» — только владелец. Реальные агрегаты по операциям за выбранный месяц.
 // Экспорт месяца в Excel — в привычной Кристи структуре: категории × дни месяца.
 import { useState } from 'react';
-import * as XLSX from 'xlsx';
 
 const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
 
@@ -11,6 +10,7 @@ export default function Analytics({ UI, transactions, categories, dayClosures, d
   // Клик по карточке расходов → разбивка по категориям за месяц (просьба Кристи 2026-07-21:
   // «чтобы личные и рабочие расходы были кликабельны, а то общего учёта нет»)
   const [expView, setExpView] = useState(''); // '' | work | personal
+  const [xlsBusy, setXlsBusy] = useState(false); // подгружается библиотека Excel
 
   const monthTx = transactions.filter(t => t.op_date?.startsWith(month));
   const kindOf = (t) => categories.find(c => c.id === t.category_id)?.kind;
@@ -58,7 +58,14 @@ export default function Analytics({ UI, transactions, categories, dayClosures, d
     setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
   };
 
-  const exportExcel = () => {
+  // Библиотека xlsx весит 95 КБ в сжатом виде — треть всей загрузки CRM,
+  // а нужна только здесь и только владельцу. Поэтому подгружается по нажатию,
+  // а не при каждом входе (важно на медленном интернете и через VPN).
+  const exportExcel = async () => {
+    if (xlsBusy) return;
+    setXlsBusy(true);
+    try {
+    const XLSX = await import('xlsx');
     const [y, m] = month.split('-').map(Number);
     const daysInMonth = new Date(y, m, 0).getDate();
     const cell = (catId, type, day) => monthTx
@@ -92,6 +99,10 @@ export default function Analytics({ UI, transactions, categories, dayClosures, d
     XLSX.utils.book_append_sheet(wb, ws, MONTHS[m - 1]);
     XLSX.writeFile(wb, `ПЕЧАТНИК-${MONTHS[m - 1]}-${y}.xlsx`);
     showToast('Excel выгружен');
+    } catch (e) {
+      console.error(e);
+      showToast('Не получилось собрать Excel — попробуй ещё раз', 'error');
+    } finally { setXlsBusy(false); }
   };
 
   const monthLabel = `${MONTHS[+month.slice(5) - 1]} ${month.slice(0, 4)}`;
@@ -105,9 +116,9 @@ export default function Analytics({ UI, transactions, categories, dayClosures, d
           <span style={{ fontWeight: 800, fontSize: 14, padding: '0 10px', minWidth: 120, textAlign: 'center', textTransform: 'capitalize' }}>{monthLabel}</span>
           <button onClick={() => shiftMonth(1)} disabled={month >= db.today.slice(0, 7)} style={{ border: 'none', background: UI.soft, borderRadius: 999, width: 32, height: 32, fontSize: 14, opacity: month >= db.today.slice(0, 7) ? 0.3 : 1 }}>→</button>
         </div>
-        <button onClick={exportExcel} style={{
+        <button onClick={exportExcel} disabled={xlsBusy} style={{
           marginLeft: 'auto', border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '10px 20px', fontWeight: 700, fontSize: 14,
-        }}>Скачать Excel (как твоя таблица)</button>
+        }}>{xlsBusy ? 'Готовлю файл…' : 'Скачать Excel (как твоя таблица)'}</button>
       </div>
 
       {/* Крупные цифры. Личные — отдельно, в расходы бизнеса и прибыль не входят (как в Excel Кристи) */}

@@ -34,6 +34,32 @@ export const debtOfTask = (transactions, t) =>
 export const owedToClient = (transactions, t) =>
   t.cancelled ? Math.max(0, paidOfTask(transactions, t)) : 0;
 
+// ---------- Деньги по клиенту ----------
+// Считаются через его задачи: оплаты приходят с task_id (или client_id, если задачи ещё нет).
+
+export const clientTasks = (tasks, clientId) => tasks.filter(t => t.client_id === clientId);
+
+export const clientPayments = (transactions, tasks, clientId) => {
+  const ids = new Set(clientTasks(tasks, clientId).map(t => t.id));
+  return transactions.filter(t => t.type === 'income' && (t.client_id === clientId || ids.has(t.task_id)));
+};
+
+// Возвраты клиенту — расходы, привязанные к его задачам (2026-08-13)
+export const clientRefunds = (transactions, tasks, clientId) => {
+  const ids = new Set(clientTasks(tasks, clientId).map(t => t.id));
+  return transactions.filter(t => t.type === 'expense' && ids.has(t.task_id));
+};
+
+// Долг клиента = сумма непогашенных долгов по его задачам (отказные долга не дают)
+export const clientDebt = (transactions, tasks, clientId) =>
+  clientTasks(tasks, clientId).reduce((s, t) => s + Math.max(0, debtOfTask(transactions, t)), 0);
+
+// «Оплатил всего» — за вычетом возвращённого: отказавшийся клиент не числится плательщиком
+export const clientPaidTotal = (transactions, tasks, clientId) =>
+  sum(clientPayments(transactions, tasks, clientId))
+  - sum(clientRefunds(transactions, tasks, clientId))
+  + clientTasks(tasks, clientId).reduce((s, t) => s + (t.hidden_paid || 0) - (t.hidden_refund || 0), 0);
+
 // Категория-возврат: по ней форма расхода показывает привязку к задаче.
 // По названию, а не по id: категории Кристи заводит сама в Настройках
 // («Возврат», «Возврат клиенту», «Возвраты по браку» — все подходят).

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import I from '../Icon.jsx';
 import { debtOfTask } from '../taskMoney.js';
+import * as money from '../taskMoney.js';
 
 const fmt = (n) => (n || 0).toLocaleString('ru-RU');
 const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
@@ -46,23 +47,13 @@ export default function Clients({ clients, tasks, transactions, categories, db, 
     db.updateClientPrices(c, c.prices.filter((_, idx) => idx !== i));
   };
 
-  const clientTasks = (id) => tasks.filter(t => t.client_id === id);
-  const clientPayments = (id) => {
-    const taskIds = new Set(clientTasks(id).map(t => t.id));
-    return transactions.filter(t => t.type === 'income' && (t.client_id === id || taskIds.has(t.task_id)));
-  };
-  // Возвраты клиенту — расходы, привязанные к его задачам (2026-08-13)
-  const clientRefunds = (id) => {
-    const taskIds = new Set(clientTasks(id).map(t => t.id));
-    return transactions.filter(t => t.type === 'expense' && taskIds.has(t.task_id));
-  };
-  // Долг по задаче — общий src/taskMoney.js: приходы минус возвраты клиенту,
-  // со скрытыми от сотрудницы строками (hidden_*, 023); у отказных задач долга нет
-  const clientDebt = (id) => clientTasks(id).reduce((s, t) => s + Math.max(0, debtOfTask(transactions, t)), 0);
-  // «Оплатил всего» — за вычетом возвращённого: отказавшийся клиент не должен числиться плательщиком
-  const clientTotal = (id) => clientPayments(id).reduce((s, t) => s + t.amount, 0)
-    - clientRefunds(id).reduce((s, t) => s + t.amount, 0)
-    + clientTasks(id).reduce((s, t) => s + (t.hidden_paid || 0) - (t.hidden_refund || 0), 0);
+  // Задачи, оплаты, возвраты и долг клиента считает общий src/taskMoney.js —
+  // теми же формулами пользуется мобильная версия
+  const clientTasks = (id) => money.clientTasks(tasks, id);
+  const clientPayments = (id) => money.clientPayments(transactions, tasks, id);
+  const clientRefunds = (id) => money.clientRefunds(transactions, tasks, id);
+  const clientDebt = (id) => money.clientDebt(transactions, tasks, id);
+  const clientTotal = (id) => money.clientPaidTotal(transactions, tasks, id);
   const catName = (id) => categories.find(c => c.id === id)?.name || '?';
 
   const filtered = clients.filter(c =>

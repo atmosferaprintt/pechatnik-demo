@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import I from '../Icon.jsx';
 import { localDate } from '../dates.js';
+import { taskParts, partsTotal, spreadParts } from '../depositParts.js';
 
 const fmt = (n) => (n || 0).toLocaleString('ru-RU');
 const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
@@ -20,6 +21,7 @@ export default function Deposits({ deposits, tasks, manualDebts, db, UI, showToa
   const [useWhat, setUseWhat] = useState('');
   const [useAmount, setUseAmount] = useState('');
   const [useTaskId, setUseTaskId] = useState('');
+  const [useSplit, setUseSplit] = useState(true); // расписывать списание по составу задачи
   const [topUpFor, setTopUpFor] = useState(null); // id депозита с открытой формой пополнения
   const [topUpSum, setTopUpSum] = useState('');
   const [editId, setEditId] = useState(null);
@@ -119,6 +121,11 @@ export default function Deposits({ deposits, tasks, manualDebts, db, UI, showToa
     showToast(`Депозит «${d.name}» удалён`);
   };
 
+  // Состав выбранной задачи: списание можно расписать построчно (Печать / Дизайн …)
+  const selTask = useTaskId ? tasks.find(t => t.id === +useTaskId) : null;
+  const selParts = taskParts(selTask);
+  const splitRows = (sum) => (useSplit && selParts.length > 1 ? spreadParts(selTask.parts, sum) : []);
+
   const spent = (d) => d.uses.reduce((s, u) => s + u.amount, 0);
   const left = (d) => d.total - spent(d);
   const taskTitle = (id) => tasks.find(t => t.id === id)?.title;
@@ -141,8 +148,9 @@ export default function Deposits({ deposits, tasks, manualDebts, db, UI, showToa
     const what = useWhat.trim() || taskTitle(taskId) || '';
     // Привязана задача → db создаст и оплату способом «Депозит»: долг задачи гаснет,
     // но в доходы дня и сверку это не попадает (деньги пришли при внесении депозита)
-    db.addDepositUse(d, { what, amount: +useAmount, taskId });
-    setUseWhat(''); setUseAmount(''); setUseTaskId(''); setUseFor(null);
+    const split = splitRows(+useAmount);
+    db.addDepositUse(d, { what, amount: +useAmount, taskId, parts: split.length > 1 ? split : null });
+    setUseWhat(''); setUseAmount(''); setUseTaskId(''); setUseSplit(true); setUseFor(null);
     showToast(taskId ? 'Списано, оплата привязана к задаче ✓' : 'Списание записано ✓');
   };
 
@@ -234,11 +242,32 @@ export default function Deposits({ deposits, tasks, manualDebts, db, UI, showToa
               <div style={{ marginTop: 'auto' }}>
                 {useFor === d.id ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <select style={input} value={useTaskId} onChange={e => setUseTaskId(e.target.value)}>
+                    <select style={input} value={useTaskId} onChange={e => {
+                      setUseTaskId(e.target.value);
+                      const t = e.target.value ? tasks.find(x => x.id === +e.target.value) : null;
+                      const total = partsTotal(taskParts(t));
+                      if (total && !useAmount) setUseAmount(String(total));
+                    }}>
                       <option value="">Привязать задачу (необязательно)…</option>
                       {openTasks.map(t => <option key={t.id} value={t.id}>{t.title} · {fmt(t.amount)} ₽</option>)}
                     </select>
                     <input style={input} placeholder={useTaskId ? 'Комментарий (можно пусто)' : 'Что заказали'} value={useWhat} onChange={e => setUseWhat(e.target.value)} />
+                    {/* Состав задачи: списание ляжет отдельной строкой на каждую часть */}
+                    {selParts.length > 1 && (
+                      <div style={{ background: 'rgba(247,214,74,.18)', border: `1.5px solid ${UI.accent}`, borderRadius: 14, padding: '10px 14px' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                          <input type="checkbox" checked={useSplit} onChange={e => setUseSplit(e.target.checked)} />
+                          расписать по составу заказа
+                        </label>
+                        {useSplit && splitRows(+useAmount).map((p, i) => (
+                          <div key={i} style={{ display: 'flex', gap: 8, fontSize: 13, marginTop: 6, color: UI.dark }}>
+                            <span>{p.name}</span>
+                            <span style={{ marginLeft: 'auto', fontWeight: 700 }}>−{fmt(p.amount)} ₽</span>
+                          </div>
+                        ))}
+                        {useSplit && !+useAmount && <div style={{ color: UI.muted, fontSize: 12.5, marginTop: 6 }}>Укажи сумму — распишу по частям</div>}
+                      </div>
+                    )}
                     <div style={{ display: 'flex', gap: 8 }}>
                       <input style={{ ...input, flex: 1, minWidth: 0 }} type="number" placeholder="Сумма, ₽" value={useAmount} onChange={e => setUseAmount(e.target.value)} />
                       <button onClick={() => addUse(d)} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '0 20px', fontWeight: 800, fontSize: 13, flexShrink: 0 }}>ОК</button>

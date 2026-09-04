@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import useIsMobile from './mobile/useIsMobile.js';
+import { depositUseRows, newBatchId } from './depositParts.js';
 import MobileApp from './mobile/MobileApp.jsx';
 import I from './Icon.jsx';
 import { localDate, localHM } from './dates.js';
@@ -762,17 +763,28 @@ export default function App() {
       return true;
     },
 
-    async addDepositUse(d, { what, amount, taskId }) {
-      const use = { date: db.today, what, amount, task_id: taskId || null, created_by: currentUser.name };
+    // parts (из src/depositParts.js) — списание расписано по составу задачи: своя строка на каждую
+    // часть и своя оплата, чтобы было видно, что ушло в печать, а что в дизайн (просьба 2026-09-03).
+    async addDepositUse(d, { what, amount, taskId, parts }) {
+      const rows = parts?.length ? depositUseRows(what, parts) : [{ what, amount, part: null }];
+      const uses = rows.map(r => ({ date: db.today, what: r.what, amount: r.amount, task_id: taskId || null, created_by: currentUser.name }));
       if (!DEMO) {
-        const { data, error } = await supabase.from('deposit_uses').insert({ deposit_id: d.id, use_date: use.date, what, amount, task_id: use.task_id, created_by: currentUser.id }).select().single();
+        const { data, error } = await supabase.from('deposit_uses')
+          .insert(uses.map(u => ({ deposit_id: d.id, use_date: u.date, what: u.what, amount: u.amount, task_id: u.task_id, created_by: currentUser.id })))
+          .select();
         if (error) return fail(error);
-        use.id = data.id;
+        data.forEach((row, i) => { uses[i].id = row.id; });
       }
-      setDeposits(prev => prev.map(x => x.id === d.id ? { ...x, uses: [...x.uses, use] } : x));
+      setDeposits(prev => prev.map(x => x.id === d.id ? { ...x, uses: [...x.uses, ...uses] } : x));
       if (taskId) {
         const task = tasks.find(t => t.id === taskId);
-        await db.addTransactions([{ type: 'income', category_id: null, amount, payment_method: 'deposit', bank_id: null, task_id: taskId, client_id: task?.client_id || null, deposit_id: d.id, comment: `с депозита «${d.name}»` }]);
+        // Разбитое списание — один чек: строки связаны batch_id, как разбитая оплата в EntryForm
+        const batch = rows.length > 1 ? newBatchId() : null;
+        await db.addTransactions(rows.map(r => ({
+          type: 'income', category_id: null, amount: r.amount, payment_method: 'deposit', bank_id: null,
+          task_id: taskId, client_id: task?.client_id || null, deposit_id: d.id, batch_id: batch,
+          comment: `с депозита «${d.name}»${r.part ? ` · ${r.part}` : ''}`,
+        })));
       }
       return true;
     },

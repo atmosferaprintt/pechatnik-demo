@@ -2,6 +2,7 @@
 // этап, у кого, деньги, отметки, история, состав заказа, оплаты и кнопки завершения.
 // Действия зовут общий src/taskActions.js — тексты в истории одинаковые везде.
 import I from '../../Icon.jsx';
+import { partFromComment } from '../../depositParts.js';
 import { taskIncomeRows, taskRefundRows, paidOfTask, debtOfTask } from '../../taskMoney.js';
 import { deadlineStatus, ACTION_PRESETS } from '../../taskStatus.js';
 import * as act from '../../taskActions.js';
@@ -65,12 +66,14 @@ export default function MTaskSheet(props) {
   const dlStatus = deadlineStatus(t);
   const catName = (id) => categories.find(x => x.id === id)?.name || '?';
   const mLabel = (k) => PAYMENT_METHODS.find(m => m.key === k)?.label || k;
-  const payWay = (method, bankId, bankNm) => method === 'deposit' ? 'Из предоплаты'
+  // У списания с депозита показываем часть состава: «Из предоплаты · Печать» (просьба 2026-09-03)
+  const payWay = (method, bankId, bankNm, comment) => method === 'deposit'
+    ? `Из предоплаты${partFromComment(comment) ? ` · ${partFromComment(comment)}` : ''}`
     : mLabel(method) + (bankNm || bankId ? ` · ${bankNm || banks.find(b => b.id === bankId)?.name || ''}` : '');
 
   const rows = [
     ...(t.hidden_rows || []).map((r, i) => ({ key: `h${i}`, refund: r.type === 'expense', cat: null, way: payWay(r.method, null, r.bank), who: r.who, date: dm(r.date), amount: r.amount })),
-    ...paid.map(p => ({ key: `v${p.id}`, refund: false, cat: p.payment_method === 'deposit' ? null : catName(p.category_id), way: payWay(p.payment_method, p.bank_id), who: p.created_by, date: dm(p.op_date), amount: p.amount })),
+    ...paid.map(p => ({ key: `v${p.id}`, refund: false, cat: p.payment_method === 'deposit' ? null : catName(p.category_id), way: payWay(p.payment_method, p.bank_id, null, p.comment), who: p.created_by, date: dm(p.op_date), amount: p.amount })),
     ...refunded.map(p => ({ key: `r${p.id}`, refund: true, cat: catName(p.category_id), way: payWay(p.payment_method, p.bank_id), who: p.created_by, date: dm(p.op_date), amount: p.amount })),
   ];
 

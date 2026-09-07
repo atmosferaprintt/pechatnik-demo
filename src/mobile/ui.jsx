@@ -1,8 +1,9 @@
 // Кирпичики мобильной версии: карточки, пилюли, кнопки, шит снизу.
 // Стиль тот же, что на компьютере (ДИЗАЙН.md: кремово-жёлтый, пилюли, крупные скругления),
 // но размеры под палец: любая нажимаемая зона — минимум 44px.
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import I from '../Icon.jsx';
+import { registerSheet } from './sheetHistory.js';
 
 export const M = {
   accent: '#f7d64a',
@@ -126,21 +127,23 @@ export function Row({ children, onClick, style }) {
 // ---------- Шит снизу: замена модалок ----------
 // Открывается от нижнего края (палец рядом), закрывается по фону, крестику и кнопке «назад».
 export function Sheet({ open, onClose, title, children, footer }) {
+  // Через ref: onClose часто новая функция на каждый рендер, а перерегистрация шита
+  // на каждый рендер путала бы стек истории
+  const closeRef = useRef(onClose);
+  useEffect(() => { closeRef.current = onClose; }, [onClose]);
+
   useEffect(() => {
     if (!open) return;
     // Фон не скроллится, пока открыт шит
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    // Аппаратная кнопка «назад» на Android закрывает шит, а не выкидывает из CRM
-    window.history.pushState({ sheet: true }, '');
-    const onPop = () => onClose();
-    window.addEventListener('popstate', onPop);
+    // Кнопку «назад» на Android разруливает общий стек шитов (src/mobile/sheetHistory.js)
+    const unregister = registerSheet(() => closeRef.current());
     return () => {
       document.body.style.overflow = prev;
-      window.removeEventListener('popstate', onPop);
-      if (window.history.state?.sheet) window.history.back();
+      unregister();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
   return (

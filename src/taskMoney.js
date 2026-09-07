@@ -26,9 +26,11 @@ export const refundOfTask = (transactions, t) =>
 export const paidOfTask = (transactions, t) =>
   (t.hidden_paid || 0) + sum(taskIncomeRows(transactions, t.id)) - refundOfTask(transactions, t);
 
-// Долг клиента. Отказ — долга нет: заказа больше не существует
+// Долг клиента. Отказ — долга нет: заказа больше не существует.
+// Списанный долг (владелец нажал «долг оплачен», 024) тоже не висит: деньги были,
+// просто запись не нашли — саму оплату при этом не выдумываем.
 export const debtOfTask = (transactions, t) =>
-  t.cancelled ? 0 : (t.amount || 0) - paidOfTask(transactions, t);
+  t.cancelled || t.debt_written_off ? 0 : (t.amount || 0) - paidOfTask(transactions, t);
 
 // Отказ оформлен, а деньги клиенту ещё не вернули — сколько должны ему мы
 export const owedToClient = (transactions, t) =>

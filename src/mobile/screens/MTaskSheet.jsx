@@ -50,7 +50,7 @@ function Fact({ label, value, sub, danger, accent }) {
 export default function MTaskSheet(props) {
   const {
     task, onClose, onEdit, onPayTask, tasks, clients, contractors, transactions, categories, banks,
-    PAYMENT_METHODS, currentUser, isOwnerAccount, db, PEOPLE_COLUMNS, STAGES, showToast,
+    PAYMENT_METHODS, currentUser, isOwner, isOwnerAccount, db, PEOPLE_COLUMNS, STAGES, showToast,
   } = props;
 
   if (!task) return null;
@@ -84,6 +84,13 @@ export default function MTaskSheet(props) {
           <I n="wallet" size={14} /> Записать оплату ({money(debt)})
         </Btn>
       )}
+      {/* Долг списывает только Кристи: оплата была, но записи не нашли (024) */}
+      {isOwner && (debt > 0 || t.debt_written_off) && !t.cancelled && (
+        <Btn kind={t.debt_written_off ? 'accent' : 'soft'} wide onClick={() => {
+          db.writeOffTaskDebt(t, !t.debt_written_off);
+          showToast(t.debt_written_off ? 'Долг вернула' : 'Долг списан — оплата была ✓');
+        }}>{t.debt_written_off ? '↩ вернуть долг' : '✎ долг оплачен (записи нет)'}</Btn>
+      )}
       {t.done ? (
         <Btn wide onClick={() => { act.reopenTask(ctx, t); onClose(); }}>↩ Вернуть в работу</Btn>
       ) : (
@@ -101,6 +108,7 @@ export default function MTaskSheet(props) {
         <PayChip task={t} transactions={transactions} />
         <DeadlineChip task={t} />
         {t.cancelled && <Chip>✕ отказ клиента</Chip>}
+        {t.debt_written_off && !t.cancelled && <Chip tone="accent">долг списан</Chip>}
         {t.done && !t.cancelled && <Chip tone="ok">завершена</Chip>}
       </div>
       <div style={{ color: M.muted, fontSize: 12 }}>создана {dm(t.created_at)}</div>

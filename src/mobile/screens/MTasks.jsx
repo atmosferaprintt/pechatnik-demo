@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import I from '../../Icon.jsx';
 import { debtOfTask } from '../../taskMoney.js';
-import { deadlineStatus } from '../../taskStatus.js';
+import { deadlineStatus, involvesPerson } from '../../taskStatus.js';
 import * as act from '../../taskActions.js';
 import { M, Pills, Btn, Chip, Empty, money, inputStyle } from '../ui.jsx';
 import MTaskSheet, { PayChip, DeadlineChip } from './MTaskSheet.jsx';
@@ -15,6 +15,8 @@ export default function MTasks(props) {
 
   const [view, setView] = useState('board');            // board | debts | done
   const [personFlt, setPersonFlt] = useState(isOwner ? '' : currentUser.name);
+  // «у кого сейчас» или «участвовала» — цех ищет свои заказы, даже пока они числятся за менеджером
+  const [personMode, setPersonMode] = useState('now'); // now | any
   const [query, setQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [openTask, setOpenTask] = useState(null);
@@ -28,7 +30,7 @@ export default function MTasks(props) {
   const matches = (t) => {
     const q = query.trim().toLowerCase();
     const okQ = !q || t.title.toLowerCase().includes(q) || clientShort(t.client_id).toLowerCase().includes(q);
-    const okP = !personFlt || t.assignee === personFlt;
+    const okP = !personFlt || (personMode === 'any' ? involvesPerson(t, personFlt) : t.assignee === personFlt);
     return okQ && okP;
   };
 
@@ -116,11 +118,19 @@ export default function MTasks(props) {
       ]} />
 
       {/* Фильтр по людям: своё имя первым — сотрудница открывает свои задачи сразу */}
-      <Pills value={personFlt} onChange={setPersonFlt} style={{ marginBottom: 14 }} options={[
+      <Pills value={personFlt} onChange={setPersonFlt} style={{ marginBottom: personFlt ? 8 : 14 }} options={[
         { key: '', label: 'Все' },
         { key: currentUser.name, label: `${currentUser.name} (я)` },
         ...PEOPLE_COLUMNS.filter(p => p !== currentUser.name).map(p => ({ key: p, label: p })),
       ]} />
+
+      {/* Пока выбран человек — чем считать «его» задачи: держит сейчас или вообще вёл */}
+      {personFlt && (
+        <Pills value={personMode} onChange={setPersonMode} style={{ marginBottom: 14 }} options={[
+          { key: 'now', label: 'у кого сейчас' },
+          { key: 'any', label: 'участвовала' },
+        ]} />
+      )}
 
       {view === 'board' ? (
         STAGES.map(stage => {

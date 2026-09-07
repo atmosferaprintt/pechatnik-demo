@@ -521,6 +521,20 @@ export default function App() {
       return true;
     },
 
+    // «Списать долг» — только владелец (024: колонка недоступна на запись напрямую,
+    // права проверяет security definer функция write_off_task_debt)
+    async writeOffTaskDebt(t, off) {
+      if (!DEMO) {
+        const { error } = await supabase.rpc('write_off_task_debt', { p_task_id: t.id, p_off: off });
+        if (error) return fail(error);
+      }
+      const action = off ? '✎ списала долг (оплата была)' : '↩ вернула долг';
+      setTasks(prev => prev.map(x => x.id === t.id
+        ? { ...x, debt_written_off: off, log: [...(x.log || []), { who: currentUser.name, action, time: logTimeNow() }] }
+        : x));
+      return true;
+    },
+
     async updateTask(t, patch, logAction) {
       if (!DEMO) {
         const { error } = await supabase.from('tasks').update(patch).eq('id', t.id);

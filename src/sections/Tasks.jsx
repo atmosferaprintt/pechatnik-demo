@@ -12,7 +12,7 @@ import { localDate } from '../dates.js';
 import { taskIncomeRows, taskRefundRows, paidOfTask, debtOfTask } from '../taskMoney.js';
 import { partFromComment } from '../depositParts.js';
 import * as act from '../taskActions.js';
-import { deadlineStatus, ACTION_PRESETS } from '../taskStatus.js';
+import { deadlineStatus, ACTION_PRESETS, involvesPerson } from '../taskStatus.js';
 
 const fmt = (n) => (n || 0).toLocaleString('ru-RU') + ' ₽';
 const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
@@ -44,6 +44,8 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
   const [flt, setFlt] = useState(''); // '' | debt | burning
   // Фильтр по людям: сотрудница сначала видит свои, Кристи — всех
   const [personFlt, setPersonFlt] = useState(isOwner ? '' : currentUser.name);
+  // «у кого сейчас» или «участвовала» — цех ищет свои заказы, даже пока они числятся за менеджером
+  const [personMode, setPersonMode] = useState('now'); // now | any
 
   // Решение Кристи 2026-07-17: редактировать могут ВСЕ (страховка — история «кто что менял»).
   // Удаление — только владелец.
@@ -72,6 +74,8 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
     const okF = !flt || (flt === 'debt' ? taskDebt(t) > 0 : ['overdue', 'soon'].includes(deadlineStatus(t)));
     return okQ && okF;
   };
+
+  const personOk = (t) => !personFlt || (personMode === 'any' ? involvesPerson(t, personFlt) : t.assignee === personFlt);
 
   // Завершённая задача уходит с доски: с долгом — в «Долги», оплаченная — в «Завершённые».
   // Отказная (cancelled) долга не имеет, поэтому в «Долгах» не висит — сразу в завершённые
@@ -387,6 +391,19 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
               background: personFlt === p ? UI.dark : '#fff', color: personFlt === p ? '#fff' : UI.dark,
             }}>{p === currentUser.name ? `${p} (я)` : p}</button>
           ))}
+          {/* Пока выбран человек — чем считать «его» задачи: держит сейчас или вообще вёл */}
+          {personFlt && (
+            <span style={{ display: 'flex', background: '#fff', borderRadius: 999, padding: 4, boxShadow: UI.shadow }}>
+              {[['now', 'у кого сейчас'], ['any', 'участвовала']].map(([k, l]) => (
+                <button key={k} onClick={() => setPersonMode(k)} title={k === 'now'
+                  ? 'Задачи, которые сейчас числятся за этим человеком'
+                  : 'Плюс те, где человек есть в истории: принял, отметил, передал дальше'} style={{
+                  border: 'none', borderRadius: 999, padding: '6px 12px', fontSize: 12, fontWeight: 700,
+                  background: personMode === k ? UI.dark : 'transparent', color: personMode === k ? '#fff' : UI.dark,
+                }}>{l}</button>
+              ))}
+            </span>
+          )}
         </span>
       </div>
 
@@ -421,7 +438,7 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
       {view === 'board' && (
       <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', overflowX: 'auto', paddingBottom: 8 }}>
         {STAGES.map((stage, si) => {
-          const inCol = activeTasks.filter(t => (t.stage || 'Новая') === stage && (!personFlt || t.assignee === personFlt)).sort(byOrder);
+          const inCol = activeTasks.filter(t => (t.stage || 'Новая') === stage && personOk(t)).sort(byOrder);
           const sum = inCol.reduce((s, t) => s + (t.amount || 0), 0);
           return (
             <div key={stage} onDragOver={e => dragOverCol(e, stage)} onDrop={e => { e.preventDefault(); dropInCol(stage, inCol); }}
@@ -564,6 +581,8 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                   danger={debt > 0 || (t.cancelled && paidTotal > 0)} accent={!t.cancelled && t.amount > 0 && debt < 0}
                   sub={t.cancelled
                     ? `клиент отказался · заказ был ${fmt(t.amount)}`
+                    : t.debt_written_off
+                    ? `долг списан · заказ ${fmt(t.amount)} · записано ${fmt(paidTotal)}`
                     : `заказ ${fmt(t.amount)} · оплачено ${fmt(paidTotal)}`} UI={UI} />
                 <Fact label="Дедлайн" value={dm(t.deadline)} danger={dlStatus === 'overdue'} accent={dlStatus === 'soon'}
                   sub={dlStatus === 'overdue' ? 'просрочено!' : dlStatus === 'soon' ? 'горит' : 'в графике'} UI={UI} />
@@ -690,6 +709,17 @@ export default function Tasks({ tasks, clients, contractors, transactions, categ
                   <button onClick={() => onPayTask(t)} style={{
                     flex: 1, border: 'none', background: UI.accent, color: UI.dark, borderRadius: 999, padding: '13px 0', fontWeight: 800, fontSize: 14, minWidth: 200,
                   }}><I n="wallet" size={14} /> Записать оплату ({fmt(debt)}) → Финансы</button>
+                )}
+                {/* Долг списывает только Кристи: оплата была, но записи не нашли (024).
+                    Деньги не выдумываем — просто снимаем долг с задачи */}
+                {isOwner && (debt > 0 || t.debt_written_off) && !t.cancelled && (
+                  <button onClick={() => {
+                    db.writeOffTaskDebt(t, !t.debt_written_off);
+                    showToast(t.debt_written_off ? 'Долг вернула' : 'Долг списан — оплата была ✓');
+                  }} title={t.debt_written_off ? 'Вернуть долг обратно' : 'Оплата была, но записи нет — снять долг с задачи'} style={{
+                    border: 'none', background: t.debt_written_off ? UI.accent : UI.soft, color: UI.dark,
+                    borderRadius: 999, padding: '13px 18px', fontWeight: 700, fontSize: 14,
+                  }}>{t.debt_written_off ? '↩ вернуть долг' : '✎ долг оплачен'}</button>
                 )}
                 {canEdit(t) && (t.done ? (
                   <button onClick={() => reopenTask(t)} style={{

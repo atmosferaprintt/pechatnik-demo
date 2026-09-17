@@ -60,11 +60,20 @@ export default function MFinance(props) {
   const bankName = (id) => banks.find(b => b.id === id)?.name;
   const taskTitle = (id) => tasks.find(t => t.id === id)?.title;
 
-  const quickSave = (q) => {
+  // Пока запись уходит на сервер, кнопки гаснут: на медленном интернете сотрудница
+  // успевала натыкать несколько одинаковых записей (случай Марьян 2026-09-17).
+  // Ключ операции здесь не ставим: три ксерокса подряд — законный повтор.
+  const [quickBusy, setQuickBusy] = useState(false);
+
+  const quickSave = async (q) => {
+    if (quickBusy) return;
     const cat = categories.find(c => c.name === q.category);
     if (!cat) { showToast('Нет такой категории', 'error'); return; }
-    db.addTransactions([{ type: 'income', category_id: cat.id, amount: q.amount, payment_method: 'cash', bank_id: null, comment: '' }]);
-    showToast(`${q.label} — записано ✓`);
+    setQuickBusy(true);
+    try {
+      const ok = await db.addTransactions([{ type: 'income', category_id: cat.id, amount: q.amount, payment_method: 'cash', bank_id: null, comment: '' }]);
+      if (ok) showToast(`${q.label} — записано ✓`);
+    } finally { setQuickBusy(false); }
   };
 
   const closeShift = () => {
@@ -130,7 +139,7 @@ export default function MFinance(props) {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {/* label уже содержит сумму («Ксерокс 10 ₽») — второй раз её не печатаем */}
             {quickOps.map((q, i) => (
-              <Btn key={i} kind="accent" onClick={() => quickSave(q)} style={{ padding: '11px 15px' }}>
+              <Btn key={i} kind="accent" disabled={quickBusy} onClick={() => quickSave(q)} style={{ padding: '11px 15px' }}>
                 {q.label}
               </Btn>
             ))}

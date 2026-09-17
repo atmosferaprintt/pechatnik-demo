@@ -7,7 +7,7 @@ import { isRefundCat } from '../../taskMoney.js';
 import { TaskLinkSelect } from '../../sections/Finance.jsx';
 import { M, Sheet, Btn, Field, inputStyle, money } from '../ui.jsx';
 
-export default function MTxEdit({ tx, onClose, categories, banks, tasks, transactions, db, PAYMENT_METHODS, isOwner, showToast, UI }) {
+export default function MTxEdit({ tx, onClose, categories, banks, tasks, transactions, db, PAYMENT_METHODS, currentUser, isOwner, showToast, UI }) {
   const [cat, setCat] = useState(tx.category_id ? String(tx.category_id) : '');
   const [sum, setSum] = useState(String(tx.amount));
   const [method, setMethod] = useState(tx.payment_method);
@@ -15,6 +15,11 @@ export default function MTxEdit({ tx, onClose, categories, banks, tasks, transac
   const [taskId, setTaskId] = useState(tx.task_id ? String(tx.task_id) : '');
   const [comment, setComment] = useState(tx.comment || '');
   const [date, setDate] = useState(tx.op_date);
+
+  // Свою сегодняшнюю запись автор может удалить сам (политика tx_employee_delete в базе это
+  // разрешала, а кнопки не было — случай Марьян 2026-09-17 с восемью дублями доставки).
+  // Удаление пишется в журнал серверным триггером (010), так что Кристи всё видит.
+  const canDelete = isOwner || (tx.created_by === currentUser?.name && tx.op_date === db.today);
 
   const isRefund = isRefundCat(categories.find(c => c.id === +cat));
   // Категории того же сорта, что у записи: доход / рабочий расход / личный расход
@@ -98,8 +103,8 @@ export default function MTxEdit({ tx, onClose, categories, banks, tasks, transac
         <input style={inputStyle} value={comment} onChange={e => setComment(e.target.value)} placeholder="Необязательно" />
       </Field>
 
-      {/* Удаление — только у владельца: у сотрудниц запись можно лишь исправить */}
-      {isOwner && (
+      {/* Владелец удаляет любую, сотрудница — свою за сегодня */}
+      {canDelete && (
         <Btn kind="danger" wide style={{ marginTop: 4 }}
           onClick={async () => {
             const ok = await db.removeTransaction(tx);

@@ -147,11 +147,19 @@ function EmployeeView(props) {
   // Касса выше считается по всем операциям дня — иначе смену не свести.
   const feedTx = isOwnerAccount ? dayTx : dayTx.filter(t => t.created_by === currentUser.name);
 
-  const quickSave = (q) => {
+  // Пока запись уходит на сервер, кнопки гаснут — иначе на медленной связи
+  // накликивается несколько одинаковых записей (случай Марьян 2026-09-17)
+  const [quickBusy, setQuickBusy] = useState(false);
+
+  const quickSave = async (q) => {
+    if (quickBusy) return;
     const cat = categories.find(c => c.name === q.category);
     if (!cat) { showToast('Нет такой категории', 'error'); return; }
-    db.addTransactions([{ type: 'income', category_id: cat.id, amount: q.amount, payment_method: 'cash', bank_id: null, comment: '' }]);
-    showToast(`${q.label} — записано ✓`);
+    setQuickBusy(true);
+    try {
+      const ok = await db.addTransactions([{ type: 'income', category_id: cat.id, amount: q.amount, payment_method: 'cash', bank_id: null, comment: '' }]);
+      if (ok) showToast(`${q.label} — записано ✓`);
+    } finally { setQuickBusy(false); }
   };
 
   // Вчерашняя оплата пришла/нашлась после закрытия смены → перекидываем на сегодня
@@ -199,9 +207,9 @@ function EmployeeView(props) {
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: UI.muted, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}><I n="zap" size={12} /> Мелочь одним тапом (нал)</div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {quickOps.map((q, i) => (
-                    <button key={i} onClick={() => quickSave(q)} style={{
+                    <button key={i} onClick={() => quickSave(q)} disabled={quickBusy} style={{
                       border: `1.5px solid ${UI.accent}`, background: 'rgba(247,214,74,.18)', borderRadius: 999,
-                      padding: '8px 14px', fontSize: 13, fontWeight: 700,
+                      padding: '8px 14px', fontSize: 13, fontWeight: 700, opacity: quickBusy ? 0.5 : 1,
                     }}>{q.label}</button>
                   ))}
                 </div>

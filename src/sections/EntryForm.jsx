@@ -2,7 +2,7 @@
 // Раньше жила внутри Finance.jsx; вынесена 2026-08-14, чтобы мобильная версия
 // записывала доходы и расходы ровно тем же кодом (разбивка на статьи, привязка к задаче,
 // создание задачи из оплаты, возврат клиенту, личные расходы владельца).
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import CatPicker from '../CatPicker.jsx';
 import { paidOfTask, debtOfTask, isRefundCat } from '../taskMoney.js';
 
@@ -10,6 +10,7 @@ const fmt = (n) => (n || 0).toLocaleString('ru-RU');
 
 // Общий чек для разбитой на статьи оплаты. ВАЖНО: crypto.randomUUID есть только на HTTPS,
 // а мы пока на http://IP — поэтому свой генератор валидного UUID v4.
+// Тот же генератор даёт ключи операций (client_op_id) для защиты от дублей — миграция 025.
 const newBatchId = () => {
   if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -22,6 +23,12 @@ const newBatchId = () => {
 // У дохода: привязка к задаче (или создание новой задачи на месте) и разбивка суммы
 // на несколько статей дохода — просьбы Кристи от 2026-07-15.
 export default function EntryForm({ categories, banks, tasks, clients, transactions, db, PAYMENT_METHODS, UI, currentUser, isOwner, showToast, onSave, prefillTaskId }) {
+  const [saving, setSaving] = useState(false);
+  // Ключи строк для защиты от дублей (025): создаются при первой попытке записи и живут,
+  // пока запись не прошла. Повторное нажатие уходит с теми же ключами — база вторую копию
+  // не примет. Сбрасываются только после успеха, вместе с формой.
+  const opIdsRef = useRef(null);
+
   const [type, setType] = useState('income');
   const [scope, setScope] = useState('work'); // для расходов владельца: work | personal
   const [rows, setRows] = useState([{ cat: '', sum: '' }]); // статьи: доход можно разбить на несколько
@@ -63,13 +70,17 @@ export default function EntryForm({ categories, banks, tasks, clients, transacti
   const setRow = (i, patch) => setRows(prev => prev.map((r, idx) => idx === i ? { ...r, ...patch } : r));
 
   const resetForm = () => {
+    opIdsRef.current = null;
     setRows([{ cat: '', sum: '' }]);
     setComment(''); setTaskId(''); setNewTaskTitle(''); setNewTaskClient(''); setNewTaskFull('');
   };
 
   const save = async () => {
+    if (saving) return; // защита от повторного нажатия, пока запись уходит на сервер
     const filled = activeRows.filter(r => r.cat && +r.sum > 0);
     if (!filled.length || filled.length !== activeRows.length) { showToast('Заполни категорию и сумму в каждой статье', 'error'); return; }
+    setSaving(true);
+    try {
 
     // «➕ Новая задача» из привязки — создаём задачу на месте.
     // У расхода привязка есть только у возвратов (refundMode) и без «новой задачи»:
@@ -93,13 +104,19 @@ export default function EntryForm({ categories, banks, tasks, clients, transacti
 
     // Разбивка на статьи: несколько операций одним чеком (общий batch_id)
     const batch = filled.length > 1 ? newBatchId() : null;
-    const ok = await onSave(filled.map(r => ({
+    // Ключи на строку: при повторной отправке уходят те же — дубля в базе не будет (025)
+    if (!opIdsRef.current || opIdsRef.current.length !== filled.length) {
+      opIdsRef.current = filled.map(() => newBatchId());
+    }
+    const ok = await onSave(filled.map((r, i) => ({
       type, category_id: +r.cat, amount: +r.sum,
       payment_method: method, bank_id: method === 'transfer' ? +bankId || null : null,
       task_id: linkTaskId, client_id: linkClientId, batch_id: batch, comment,
+      client_op_id: opIdsRef.current[i],
     })));
     if (ok === false || ok === null) return; // ошибка — ввод не сбрасываем, тост уже показан
     resetForm();
+    } finally { setSaving(false); }
   };
 
   const input = {
@@ -263,8 +280,11 @@ export default function EntryForm({ categories, banks, tasks, clients, transacti
 
       <input style={input} placeholder="Комментарий (необязательно)" value={comment} onChange={e => setComment(e.target.value)} />
 
-      <button onClick={save} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '15px 0', fontSize: 15, fontWeight: 800 }}>
-        Записать
+      <button onClick={save} disabled={saving} style={{
+        border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '15px 0',
+        fontSize: 15, fontWeight: 800, opacity: saving ? 0.5 : 1,
+      }}>
+        {saving ? 'Записываю…' : 'Записать'}
       </button>
     </div>
   );

@@ -449,6 +449,10 @@ export default function App() {
       try {
         const rows = recs.map(({ ...r }) => ({ op_date: db.today, ...r, created_by: currentUser.id }));
         const { data, error } = await supabase.from('transactions').insert(rows).select();
+        // 23505 — повтор с тем же client_op_id (025): запись уже прошла, просто ответ до нас
+        // не дошёл и форма отправила её ещё раз. Это успех, а не ошибка: дубля не создаём,
+        // свежие строки подтянет realtime.
+        if (error?.code === '23505') { showToast('Уже записано ✓'); return true; }
         if (error) throw error;
         setTransactions(prev => [...prev, ...data.map(t => ({ ...t, amount: +t.amount, created_by_id: t.created_by, created_by: currentUser.name, time: localHM(t.created_at) }))]);
         return true;

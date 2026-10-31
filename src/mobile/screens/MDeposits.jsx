@@ -3,7 +3,7 @@
 // Списки карточками, всё содержимое карточки — в шите снизу: на телефоне не хватает ширины
 // на инлайн-формы, которыми это сделано на компьютере.
 // Правила и права те же: списание с привязанной задачей гасит долг задачи (db.addDepositUse),
-// свою строку правит автор, чужую — только Кристи.
+// поступления — строками с датой (026), в Финансы не пишутся; свою строку правит автор, чужую — только Кристи.
 import { useState } from 'react';
 import I from '../../Icon.jsx';
 import { taskParts, partsTotal, spreadParts } from '../../depositParts.js';
@@ -13,6 +13,12 @@ const dm = (d) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—';
 const spent = (d) => d.uses.reduce((s, u) => s + u.amount, 0);
 const left = (d) => d.total - spent(d);
 const mdBalance = (d) => d.entries.reduce((s, e) => s + e.amount, 0);
+// История депозита по датам: взнос при заведении, поступления (+), списания (−) — как на компьютере
+const history = (d) => [
+  { kind: 'initial', row: { id: 'initial', date: d.created_at, what: 'внесено при заведении', amount: d.initial, created_by: d.created_by } },
+  ...d.topups.map(row => ({ kind: 'topup', row })),
+  ...d.uses.map(row => ({ kind: 'use', row })),
+].sort((a, b) => (a.row.date || '').localeCompare(b.row.date || ''));
 
 export default function MDeposits(props) {
   const { deposits, manualDebts, db, showToast } = props;
@@ -49,6 +55,7 @@ export default function MDeposits(props) {
       {filtered.map(d => {
         const l = left(d);
         const pct = d.total ? Math.max(0, Math.min(100, (l / d.total) * 100)) : 0;
+        const counts = [d.topups.length > 0 && `поступлений ${d.topups.length}`, d.uses.length > 0 && `списаний ${d.uses.length}`].filter(Boolean).join(' · ');
         return (
           <Card key={d.id} onClick={() => setOpenDep(d.id)} style={{ padding: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
@@ -56,10 +63,10 @@ export default function MDeposits(props) {
               <span style={{ color: M.muted, fontSize: 12, marginLeft: 'auto', flexShrink: 0 }}>с {dm(d.created_at)}</span>
               <I n="chevronRight" size={15} style={{ color: M.muted, flexShrink: 0 }} />
             </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, rowGap: 2, marginBottom: 8, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 23, fontWeight: 800, color: l <= 0 ? M.danger : M.dark }}>{fmt(l)} ₽</span>
               <span style={{ color: M.muted, fontSize: 12.5 }}>из {fmt(d.total)} ₽</span>
-              {d.uses.length > 0 && <span style={{ marginLeft: 'auto', color: M.muted, fontSize: 12 }}>списаний {d.uses.length}</span>}
+              {counts && <span style={{ marginLeft: 'auto', color: M.muted, fontSize: 12, whiteSpace: 'nowrap' }}>{counts}</span>}
             </div>
             <div style={{ height: 14, background: M.soft, borderRadius: 999, overflow: 'hidden' }}>
               <div style={{ width: `${pct}%`, height: '100%', background: pct < 20 ? M.danger : M.accent, borderRadius: 999 }} />
@@ -91,7 +98,8 @@ export default function MDeposits(props) {
                 <div style={{ fontWeight: 700, fontSize: 14.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</div>
                 <div style={{ color: M.muted, fontSize: 12 }}>записей: {d.entries.length}</div>
               </span>
-              {bal < 0 ? <Chip tone="danger">долг {fmt(-bal)} ₽</Chip> : <Chip tone="accent">✓ без долга</Chip>}
+              {/* Оплатили больше, чем взяли — плюс суммой (просьба Кристи 2026-10-31) */}
+              {bal < 0 ? <Chip tone="danger">долг {fmt(-bal)} ₽</Chip> : <Chip tone="accent">{bal > 0 ? `+${fmt(bal)} ₽` : '✓ без долга'}</Chip>}
               <I n="chevronRight" size={15} style={{ color: M.muted, flexShrink: 0 }} />
             </div>
           );
@@ -113,14 +121,21 @@ export default function MDeposits(props) {
 
 // ---------- Правка строки (списание депозита / запись должника) ----------
 // Своя строка правится автором, любая — Кристи (как на компьютере).
-function RowEdit({ row, hint, onSave, onCancel }) {
+// amountOnly — взнос при заведении: правится только сумма, дата — день заведения депозита.
+function RowEdit({ row, hint, whatHint = 'Что', amountOnly, onSave, onCancel }) {
   const [what, setWhat] = useState(row.what || '');
   const [amount, setAmount] = useState(String(row.amount));
   const [date, setDate] = useState(row.date);
   return (
     <div style={{ padding: '10px 0', borderBottom: `1px solid ${M.line}` }}>
-      <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...inputStyle, marginBottom: 8 }} />
-      <input value={what} onChange={e => setWhat(e.target.value)} placeholder="Что" style={{ ...inputStyle, marginBottom: 8 }} />
+      {amountOnly ? (
+        <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 8 }}>{row.what}</div>
+      ) : (
+        <>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...inputStyle, marginBottom: 8 }} />
+          <input value={what} onChange={e => setWhat(e.target.value)} placeholder={whatHint} style={{ ...inputStyle, marginBottom: 8 }} />
+        </>
+      )}
       <input type="number" inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value)} placeholder={hint} style={{ ...inputStyle, marginBottom: 8 }} />
       <div style={{ display: 'flex', gap: 8 }}>
         <Btn kind="dark" style={{ flex: 1 }} onClick={() => onSave({ what: what.trim(), amount: +amount, date })}>Сохранить</Btn>
@@ -138,8 +153,11 @@ function DepositSheet({ d, tasks, db, showToast, currentUser, isOwnerAccount, on
   const [useTaskId, setUseTaskId] = useState('');
   const [useSplit, setUseSplit] = useState(true); // расписывать списание по составу задачи
   const [topUpSum, setTopUpSum] = useState('');
+  const [topUpWhat, setTopUpWhat] = useState('');
+  const [topUpDate, setTopUpDate] = useState(db.today);
+  const [isSavingTopUp, setIsSavingTopUp] = useState(false); // плохая связь + двойное нажатие = двойное поступление
   const [newName, setNewName] = useState(d.name);
-  const [editRow, setEditRow] = useState(null);
+  const [editKey, setEditKey] = useState(null); // `${kind}-${id}` строки истории в правке
 
   const l = left(d);
   const pct = d.total ? Math.max(0, Math.min(100, (l / d.total) * 100)) : 0;
@@ -165,11 +183,28 @@ function DepositSheet({ d, tasks, db, showToast, currentUser, isOwnerAccount, on
     showToast(taskId ? 'Списано, оплата привязана к задаче ✓' : 'Списание записано ✓');
   };
 
-  const topUp = () => {
-    if (!+topUpSum) { showToast('Укажи сумму пополнения', 'error'); return; }
-    db.topUpDeposit(d, +topUpSum);
-    showToast(`Депозит пополнен на ${fmt(+topUpSum)} ₽ ✓`);
-    setTopUpSum(''); setMode(null);
+  const topUp = async () => {
+    if (isSavingTopUp) return;
+    if (!(+topUpSum > 0)) { showToast('Укажи сумму поступления', 'error'); return; }
+    setIsSavingTopUp(true);
+    const ok = await db.addDepositTopup(d, { what: topUpWhat.trim(), amount: +topUpSum, date: topUpDate || db.today });
+    setIsSavingTopUp(false);
+    if (!ok) return;
+    showToast(`Поступление ${fmt(+topUpSum)} ₽ записано ✓`);
+    setTopUpSum(''); setTopUpWhat(''); setMode(null);
+  };
+
+  const saveRow = async (kind, row, patch) => {
+    if (!patch.amount || patch.amount <= 0) { showToast('Сумма некорректная', 'error'); return; }
+    const ok = kind === 'use' ? await db.updateDepositUse(d, row, patch)
+      : kind === 'topup' ? await db.updateDepositTopup(d, row, patch)
+      : await db.setDepositInitial(d, patch.amount);
+    if (ok) { setEditKey(null); showToast('Исправлено ✓'); }
+  };
+
+  const removeRow = async (kind, row) => {
+    const ok = kind === 'topup' ? await db.removeDepositTopup(d, row) : await db.removeDepositUse(d, row);
+    if (ok) showToast(kind === 'topup' ? 'Поступление удалено' : row.task_id ? 'Списание удалено (и его оплата с депозита)' : 'Списание удалено');
   };
 
   const rename = () => {
@@ -233,11 +268,17 @@ function DepositSheet({ d, tasks, db, showToast, currentUser, isOwnerAccount, on
         </Card>
       ) : mode === 'topup' ? (
         <Card>
-          <Field label="Пополнить на, ₽">
+          <Field label="Сумма поступления, ₽">
             <input style={inputStyle} type="number" inputMode="numeric" value={topUpSum} onChange={e => setTopUpSum(e.target.value)} autoFocus />
           </Field>
+          <Field label="Дата">
+            <input style={inputStyle} type="date" value={topUpDate} onChange={e => setTopUpDate(e.target.value)} />
+          </Field>
+          <Field label="Комментарий">
+            <input style={inputStyle} value={topUpWhat} onChange={e => setTopUpWhat(e.target.value)} placeholder="по счёту №…, можно пусто" />
+          </Field>
           <div style={{ display: 'flex', gap: 8 }}>
-            <Btn kind="dark" style={{ flex: 1 }} onClick={topUp}>Пополнить</Btn>
+            <Btn kind="dark" style={{ flex: 1 }} onClick={topUp} disabled={isSavingTopUp}>Записать поступление</Btn>
             <Btn onClick={() => setMode(null)}>Отмена</Btn>
           </div>
         </Card>
@@ -254,44 +295,47 @@ function DepositSheet({ d, tasks, db, showToast, currentUser, isOwnerAccount, on
       ) : (
         <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
           <Btn kind="accent" style={{ flex: 1 }} onClick={() => setMode('use')}>− Списать заказ</Btn>
-          <Btn onClick={() => setMode('topup')}>+ Пополнить</Btn>
+          <Btn style={{ flex: 1 }} onClick={() => { setTopUpSum(''); setTopUpWhat(''); setTopUpDate(db.today); setMode('topup'); }}>+ Поступление</Btn>
         </div>
       )}
 
-      <div style={{ fontWeight: 800, fontSize: 14, margin: '4px 0 2px' }}>Списания</div>
+      <div style={{ fontWeight: 800, fontSize: 14, margin: '4px 0 2px' }}>Поступления и списания</div>
       <Card style={{ padding: '4px 16px' }}>
-        {d.uses.map((u, i) => editRow === u ? (
-          <RowEdit key={i} row={u} hint="Сумма списания"
-            onSave={async (patch) => {
-              if (!patch.amount || patch.amount <= 0) { showToast('Сумма некорректная', 'error'); return; }
-              const ok = await db.updateDepositUse(d, u, patch);
-              if (ok) { setEditRow(null); showToast('Исправлено ✓'); }
-            }}
-            onCancel={() => setEditRow(null)} />
-        ) : (
-          <div key={i} style={{
-            display: 'flex', gap: 8, alignItems: 'center', padding: '11px 0', fontSize: 13.5,
-            borderBottom: i === d.uses.length - 1 ? 'none' : `1px solid ${M.line}`,
-          }}>
-            <span style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {u.what}{u.task_id ? ' ' : ''}{u.task_id && <I n="link" size={11} style={{ color: M.muted }} />}
-              </div>
-              <div style={{ color: M.muted, fontSize: 12 }}>{dm(u.date)}{u.created_by ? ` · ${u.created_by}` : ''}</div>
-            </span>
-            <span style={{ fontWeight: 800, flexShrink: 0 }}>−{fmt(u.amount)} ₽</span>
-            {canRow(u) && (
-              <span style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-                <button onClick={() => setEditRow(u)} aria-label="Исправить" style={iconBtn}><I n="pencil" size={13} /></button>
-                <button onClick={async () => {
-                  const ok = await db.removeDepositUse(d, u);
-                  if (ok) showToast(u.task_id ? 'Списание удалено (и его оплата с депозита)' : 'Списание удалено');
-                }} aria-label="Удалить" style={iconBtn}><I n="x" size={13} /></button>
+        {history(d).map(({ kind, row }, i, all) => {
+          const key = `${kind}-${row.id ?? i}`;
+          if (editKey === key) {
+            return (
+              <RowEdit key={key} row={row} hint={kind === 'use' ? 'Сумма списания' : 'Сумма поступления'}
+                whatHint={kind === 'topup' ? 'Комментарий' : 'Что'} amountOnly={kind === 'initial'}
+                onSave={(patch) => saveRow(kind, row, patch)}
+                onCancel={() => setEditKey(null)} />
+            );
+          }
+          const isIn = kind !== 'use';
+          return (
+            <div key={key} style={{
+              display: 'flex', gap: 8, alignItems: 'center', padding: '11px 0', fontSize: 13.5,
+              borderBottom: i === all.length - 1 ? 'none' : `1px solid ${M.line}`,
+            }}>
+              <span style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {row.what || (isIn ? 'поступление' : '—')}{row.task_id ? ' ' : ''}{row.task_id && <I n="link" size={11} style={{ color: M.muted }} />}
+                </div>
+                <div style={{ color: M.muted, fontSize: 12 }}>{dm(row.date)}{row.created_by ? ` · ${row.created_by}` : ''}</div>
               </span>
-            )}
-          </div>
-        ))}
-        {!d.uses.length && <Empty icon="wallet" text="Списаний пока нет" />}
+              {isIn
+                ? <Chip tone="accent" style={{ fontSize: 13.5, fontWeight: 800, flexShrink: 0 }}>+{fmt(row.amount)} ₽</Chip>
+                : <span style={{ fontWeight: 800, flexShrink: 0 }}>−{fmt(row.amount)} ₽</span>}
+              {canRow(row) && (
+                <span style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                  <button onClick={() => setEditKey(key)} aria-label="Исправить" style={iconBtn}><I n="pencil" size={13} /></button>
+                  {/* Взнос при заведении не удаляется — только правится сумма */}
+                  {kind !== 'initial' && <button onClick={() => removeRow(kind, row)} aria-label="Удалить" style={iconBtn}><I n="x" size={13} /></button>}
+                </span>
+              )}
+            </div>
+          );
+        })}
       </Card>
 
       <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
@@ -329,9 +373,9 @@ function DebtorSheet({ d, db, showToast, currentUser, isOwnerAccount, onClose })
     <Sheet open onClose={onClose} title={d.name}>
       <Card style={{ padding: 16, textAlign: 'center' }}>
         <div style={{ fontSize: 26, fontWeight: 800, color: bal < 0 ? M.danger : M.ok }}>
-          {bal < 0 ? `${fmt(-bal)} ₽` : 'без долга'}
+          {bal < 0 ? `${fmt(-bal)} ₽` : bal > 0 ? `+${fmt(bal)} ₽` : 'без долга'}
         </div>
-        <div style={{ color: M.muted, fontSize: 12.5, marginTop: 2 }}>{bal < 0 ? 'должна' : 'всё оплачено'}</div>
+        <div style={{ color: M.muted, fontSize: 12.5, marginTop: 2 }}>{bal < 0 ? 'должна' : bal > 0 ? 'оплачено больше, чем взято' : 'всё оплачено'}</div>
       </Card>
 
       {form ? (

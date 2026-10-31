@@ -135,20 +135,25 @@ const DEMO_NOTES = [
   { id: 3, title: 'Визитки: размеры и вылеты', pinned: false, author: 'Алена', updated_by: 'Алена', date: '2026-07-16', updated_at: '2026-07-16T12:00:00', body: 'Обрезной 90×50, макет делаем 94×54 (вылеты по 2 мм с каждой стороны).\nТексты и логотипы — не ближе 5 мм к краю.' },
 ];
 
-// Депозиты — бюджетники вносят сумму и расходуют частями
+// Депозиты — бюджетники вносят сумму и расходуют частями.
+// initial — внесено при заведении (deposits.total), topups — поступления строками (026),
+// total — «внесено всего» = initial + поступления, держим посчитанным для карточек.
+const withTopups = (d, topups) => ({ ...d, topups, total: d.initial + topups.reduce((s, t) => s + t.amount, 0) });
+
 const DEMO_DEPOSITS = [
   {
-    id: 1, name: 'Администрация района', total: 50000, created_at: '2026-07-01',
+    id: 1, name: 'Администрация района', initial: 50000, created_at: '2026-07-01', created_by: 'Кристи',
+    topups: [{ date: '2026-07-09', what: 'по счёту №12', amount: 10000, created_by: 'Кристи' }],
     uses: [
       { date: '2026-07-05', what: 'Бланки писем 2000 шт', amount: 8000 },
       { date: '2026-07-11', what: 'Грамоты А4 ×150', amount: 4500 },
     ],
   },
   {
-    id: 2, name: 'Школа №8', total: 15000, created_at: '2026-07-10',
+    id: 2, name: 'Школа №8', initial: 15000, created_at: '2026-07-10', created_by: 'Кристи', topups: [],
     uses: [{ date: '2026-07-12', what: 'Стенгазеты А1 ×3', amount: 2700 }],
   },
-];
+].map(d => withTopups(d, d.topups));
 
 // Контрагенты — подрядчики, которым отдаём перезаказы (широкоформат, гравировка и т.п.)
 const DEMO_CONTRACTORS = [
@@ -307,11 +312,16 @@ export default function App() {
       profs.sort((a, b) => (a.role === 'owner') - (b.role === 'owner') || a.sort - b.sort);
       const nameOf = (id) => profs.find(u => u.id === id)?.name || '—';
 
-      const [cl, ts, logs, cat, bk, ctr, ctrT, dep, depU, md, mdE, sup, dc, tx, nts] = await Promise.all([
+      const [cl, ts, logs, cat, bk, ctr, ctrT, dep, depU, depT, md, mdE, sup, dc, tx, nts] = await Promise.all([
         loadAllRows('clients'), loadAllRows('tasks'), loadAllRows('task_log'),
         loadAllRows('categories'), loadAllRows('banks'),
         loadAllRows('contractors'), loadAllRows('contractor_tasks'),
         loadAllRows('deposits'), loadAllRows('deposit_uses'),
+        // Пока миграция 026 не прогнана, таблицы нет — не роняем из-за неё загрузку всей CRM
+        loadAllRows('deposit_topups').catch(e => {
+          if (e?.code === '42P01' || e?.code === 'PGRST205') { console.error(e); return []; }
+          throw e;
+        }),
         loadAllRows('manual_debts'), loadAllRows('manual_debt_entries'),
         loadAllRows('supply_items'), loadAllRows('day_closures'), loadAllRows('transactions'),
         loadAllRows('notes'),
@@ -360,10 +370,10 @@ export default function App() {
         created_at: dOnly(t.created_at),
         log: logs.filter(l => l.task_id === t.id).map(l => ({ who: l.who, action: l.action, time: logT(l.created_at) })),
       })));
-      setDeposits(dep.map(d => ({
-        ...d, total: +d.total, created_at: dOnly(d.created_at),
+      setDeposits(dep.map(d => withTopups({
+        ...d, initial: +d.total, created_at: dOnly(d.created_at), created_by: nameOf(d.created_by),
         uses: depU.filter(u => u.deposit_id === d.id).map(u => ({ id: u.id, date: u.use_date, what: u.what, amount: +u.amount, task_id: u.task_id, created_by: nameOf(u.created_by) })),
-      })));
+      }, depT.filter(t => t.deposit_id === d.id).map(t => ({ id: t.id, date: t.topup_date, what: t.comment || '', amount: +t.amount, created_by: nameOf(t.created_by) })))));
       setManualDebts(md.map(d => ({
         ...d,
         entries: mdE.filter(e => e.debt_id === d.id).map(e => ({ id: e.id, date: e.entry_date, what: e.what, amount: +e.amount, created_by: nameOf(e.created_by) })),
@@ -763,21 +773,55 @@ export default function App() {
     },
 
     async addDeposit({ name, total }) {
-      if (DEMO) { setDeposits(prev => [...prev, { id: nextId(prev), name, total, created_at: db.today, uses: [] }]); return true; }
+      if (DEMO) { setDeposits(prev => [...prev, withTopups({ id: nextId(prev), name, initial: total, created_at: db.today, created_by: currentUser.name, uses: [] }, [])]); return true; }
       try {
         const { data, error } = await supabase.from('deposits').insert({ name, total, created_by: currentUser.id }).select().single();
         if (error) throw error;
-        setDeposits(prev => [...prev, { ...data, total: +data.total, created_at: data.created_at ? localDate(data.created_at) : '', uses: [] }]);
+        setDeposits(prev => [...prev, withTopups({ ...data, initial: +data.total, created_at: data.created_at ? localDate(data.created_at) : '', created_by: currentUser.name, uses: [] }, [])]);
         return true;
       } catch (e) { return fail(e); }
     },
 
-    async topUpDeposit(d, add) {
+    // Сумма при заведении — раньше не правилась, и Кристи удаляла депозит целиком (2026-10-31)
+    async setDepositInitial(d, amount) {
       if (!DEMO) {
-        const { error } = await supabase.from('deposits').update({ total: d.total + add }).eq('id', d.id);
+        const { error } = await supabase.from('deposits').update({ total: amount }).eq('id', d.id);
         if (error) return fail(error);
       }
-      setDeposits(prev => prev.map(x => x.id === d.id ? { ...x, total: x.total + add } : x));
+      setDeposits(prev => prev.map(x => x.id === d.id ? withTopups({ ...x, initial: amount }, x.topups) : x));
+      return true;
+    },
+
+    // Поступления в депозит — строками (026), правятся и удаляются как списания.
+    // В Финансы и кассу не пишутся: деньги бюджетника вносят в Финансах отдельно (решение Кристи 2026-10-31).
+    async addDepositTopup(d, { what, amount, date }) {
+      const row = { date, what, amount, created_by: currentUser.name };
+      if (!DEMO) {
+        const { data, error } = await supabase.from('deposit_topups')
+          .insert({ deposit_id: d.id, topup_date: date, amount, comment: what || null, created_by: currentUser.id })
+          .select().single();
+        if (error) return fail(error);
+        row.id = data.id;
+      }
+      setDeposits(prev => prev.map(x => x.id === d.id ? withTopups(x, [...x.topups, row]) : x));
+      return true;
+    },
+
+    async updateDepositTopup(d, row, patch) { // patch: { what, amount, date }
+      if (!DEMO && row.id) {
+        const { error } = await supabase.from('deposit_topups').update({ comment: patch.what || null, amount: patch.amount, topup_date: patch.date }).eq('id', row.id);
+        if (error) return fail(error);
+      }
+      setDeposits(prev => prev.map(x => x.id === d.id ? withTopups(x, x.topups.map(t => (row.id ? t.id === row.id : t === row) ? { ...t, ...patch } : t)) : x));
+      return true;
+    },
+
+    async removeDepositTopup(d, row) {
+      if (!DEMO && row.id) {
+        const { error } = await supabase.from('deposit_topups').delete().eq('id', row.id);
+        if (error) return fail(error);
+      }
+      setDeposits(prev => prev.map(x => x.id === d.id ? withTopups(x, x.topups.filter(t => row.id ? t.id !== row.id : t !== row)) : x));
       return true;
     },
 

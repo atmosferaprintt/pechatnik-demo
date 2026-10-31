@@ -1,7 +1,7 @@
 // Раздел «Депозиты» — бюджетники вносят сумму и расходуют частями.
-// Карточка: имя, внесено, остаток; списания (дата, что, сумма). К списанию можно привязать задачу —
-// тогда создаётся оплата способом «Депозит» и долг задачи гаснет (в доходы дня и сверку не входит).
-// Заглушка на демо-данных.
+// Карточка: имя, внесено, остаток; история по датам — взнос при заведении, поступления (+)
+// и списания (−). К списанию можно привязать задачу — тогда создаётся оплата способом «Депозит»
+// и долг задачи гаснет (в доходы дня и сверку не входит). Поступления в Финансы не пишутся.
 import { useState } from 'react';
 import I from '../Icon.jsx';
 import { localDate } from '../dates.js';
@@ -22,8 +22,11 @@ export default function Deposits({ deposits, tasks, manualDebts, db, UI, showToa
   const [useAmount, setUseAmount] = useState('');
   const [useTaskId, setUseTaskId] = useState('');
   const [useSplit, setUseSplit] = useState(true); // расписывать списание по составу задачи
-  const [topUpFor, setTopUpFor] = useState(null); // id депозита с открытой формой пополнения
+  const [topUpFor, setTopUpFor] = useState(null); // id депозита с открытой формой поступления
   const [topUpSum, setTopUpSum] = useState('');
+  const [topUpWhat, setTopUpWhat] = useState('');
+  const [topUpDate, setTopUpDate] = useState('');
+  const [isSavingTopUp, setIsSavingTopUp] = useState(false); // плохая связь + двойное нажатие = двойное поступление
   const [editId, setEditId] = useState(null);
   const [editName, setEditName] = useState('');
   // Должники по мелочи (переехали сюда из Задач по просьбе Кристи)
@@ -35,30 +38,40 @@ export default function Deposits({ deposits, tasks, manualDebts, db, UI, showToa
   const [mdEditId, setMdEditId] = useState(null);
   const [mdEditName, setMdEditName] = useState('');
   // Правка отдельных строк — списаний депозита и записей должника (просьба Кристи 2026-07-22,
-  // «без ограничений» по дате; менеджер правит свои строки, Кристи — любые)
-  const [rowEdit, setRowEdit] = useState(null); // { kind: 'use'|'entry', dId, row, what, amount, date }
+  // «без ограничений» по дате; менеджер правит свои строки, Кристи — любые).
+  // kind: 'use' — списание, 'topup' — поступление, 'initial' — взнос при заведении (только сумма), 'entry' — запись должника
+  const [rowEdit, setRowEdit] = useState(null); // { kind, dId, row, what, amount, date }
   const canRow = (row) => isOwnerAccount || !row.created_by || row.created_by === currentUser?.name;
   const startRowEdit = (kind, d, row) => setRowEdit({ kind, dId: d.id, row, what: row.what || '', amount: String(row.amount), date: row.date });
   const saveRowEdit = async (d) => {
     const amount = +rowEdit.amount;
-    if (!amount || (rowEdit.kind === 'use' && amount <= 0)) { showToast('Сумма некорректная', 'error'); return; }
+    // Знак есть только у записей должника (взяла / оплатила); суммы депозита — всегда плюсом
+    if (!amount || (rowEdit.kind !== 'entry' && amount <= 0)) { showToast('Сумма некорректная', 'error'); return; }
     const patch = { what: rowEdit.what.trim(), amount, date: rowEdit.date };
-    const ok = rowEdit.kind === 'use'
-      ? await db.updateDepositUse(d, rowEdit.row, patch)
+    const ok = rowEdit.kind === 'use' ? await db.updateDepositUse(d, rowEdit.row, patch)
+      : rowEdit.kind === 'topup' ? await db.updateDepositTopup(d, rowEdit.row, patch)
+      : rowEdit.kind === 'initial' ? await db.setDepositInitial(d, amount)
       : await db.updateDebtEntry(d, rowEdit.row, patch);
     if (ok) { setRowEdit(null); showToast('Исправлено ✓'); }
   };
   const isRowEditing = (kind, d, row) => rowEdit && rowEdit.kind === kind && rowEdit.dId === d.id
     && (row.id ? rowEdit.row.id === row.id : rowEdit.row === row);
-  // Инлайн-форма правки строки: дата + что + сумма + ОК/отмена (общая для списаний и записей должника)
+  // Инлайн-форма правки строки: дата + что + сумма + ОК/отмена (общая для депозитов и записей должника).
+  // У взноса при заведении правится только сумма: дата — это день заведения депозита.
   const rowEditForm = (d, hint) => (
     <div style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '6px 0', flexWrap: 'wrap' }}>
-      <input type="date" value={rowEdit.date} onChange={e => setRowEdit(p => ({ ...p, date: e.target.value }))} style={{
-        padding: '7px 9px', borderRadius: 10, border: `1px solid ${UI.line}`, background: '#fff', fontSize: 12, outline: 'none', width: 125,
-      }} />
-      <input value={rowEdit.what} onChange={e => setRowEdit(p => ({ ...p, what: e.target.value }))} placeholder="Что" style={{
-        flex: 1, minWidth: 110, padding: '7px 11px', borderRadius: 10, border: `1px solid ${UI.line}`, background: '#fff', fontSize: 12.5, outline: 'none',
-      }} />
+      {rowEdit.kind === 'initial' ? (
+        <span style={{ flex: 1, minWidth: 110, fontSize: 12.5, fontWeight: 600 }}>{rowEdit.what}</span>
+      ) : (
+        <>
+          <input type="date" value={rowEdit.date} onChange={e => setRowEdit(p => ({ ...p, date: e.target.value }))} style={{
+            padding: '7px 9px', borderRadius: 10, border: `1px solid ${UI.line}`, background: '#fff', fontSize: 12, outline: 'none', width: 125,
+          }} />
+          <input value={rowEdit.what} onChange={e => setRowEdit(p => ({ ...p, what: e.target.value }))} placeholder={rowEdit.kind === 'topup' ? 'Комментарий' : 'Что'} style={{
+            flex: 1, minWidth: 110, padding: '7px 11px', borderRadius: 10, border: `1px solid ${UI.line}`, background: '#fff', fontSize: 12.5, outline: 'none',
+          }} />
+        </>
+      )}
       <input type="number" value={rowEdit.amount} onChange={e => setRowEdit(p => ({ ...p, amount: e.target.value }))} placeholder="Сумма" title={hint} style={{
         width: 84, padding: '7px 9px', borderRadius: 10, border: `1px solid ${UI.line}`, background: '#fff', fontSize: 12.5, outline: 'none',
       }} />
@@ -66,17 +79,23 @@ export default function Deposits({ deposits, tasks, manualDebts, db, UI, showToa
       <button onClick={() => setRowEdit(null)} style={{ border: 'none', background: '#fff', borderRadius: 999, padding: '7px 11px', fontSize: 12 }}>✕</button>
     </div>
   );
+  const removeRow = (kind, d, row) => kind === 'use' ? db.removeDepositUse(d, row)
+    : kind === 'topup' ? db.removeDepositTopup(d, row)
+    : db.removeDebtEntry(d, row);
+  // Взнос при заведении не удаляется — только правится сумма (удалить можно депозит целиком)
   const rowBtns = (kind, d, row, removeMsg) => canRow(row) && (
     <span style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-      <button onClick={() => startRowEdit(kind, d, row)} title="Исправить (что, сумма, дата)" style={{
+      <button onClick={() => startRowEdit(kind, d, row)} title={kind === 'initial' ? 'Исправить сумму' : 'Исправить (что, сумма, дата)'} style={{
         border: 'none', background: '#fff', borderRadius: 999, width: 24, height: 24, fontSize: 10, cursor: 'pointer',
       }}><I n="pencil" size={10} /></button>
-      <button onClick={async () => {
-        const ok = kind === 'use' ? await db.removeDepositUse(d, row) : await db.removeDebtEntry(d, row);
-        if (ok) showToast(removeMsg);
-      }} title="Удалить строку" style={{
-        border: 'none', background: '#fff', borderRadius: 999, width: 24, height: 24, fontSize: 11, color: UI.muted, cursor: 'pointer',
-      }}>✕</button>
+      {kind !== 'initial' && (
+        <button onClick={async () => {
+          const ok = await removeRow(kind, d, row);
+          if (ok) showToast(removeMsg);
+        }} title="Удалить строку" style={{
+          border: 'none', background: '#fff', borderRadius: 999, width: 24, height: 24, fontSize: 11, color: UI.muted, cursor: 'pointer',
+        }}>✕</button>
+      )}
     </span>
   );
 
@@ -128,6 +147,13 @@ export default function Deposits({ deposits, tasks, manualDebts, db, UI, showToa
 
   const spent = (d) => d.uses.reduce((s, u) => s + u.amount, 0);
   const left = (d) => d.total - spent(d);
+  // История депозита по датам: взнос при заведении, поступления (+), списания (−).
+  // В один день поступление встаёт выше списания — сначала пришли деньги, потом потратили.
+  const history = (d) => [
+    { kind: 'initial', row: { id: 'initial', date: d.created_at, what: 'внесено при заведении', amount: d.initial, created_by: d.created_by } },
+    ...d.topups.map(row => ({ kind: 'topup', row })),
+    ...d.uses.map(row => ({ kind: 'use', row })),
+  ].sort((a, b) => (a.row.date || '').localeCompare(b.row.date || ''));
   const taskTitle = (id) => tasks.find(t => t.id === id)?.title;
   const openTasks = tasks.filter(t => !t.done);
 
@@ -154,11 +180,15 @@ export default function Deposits({ deposits, tasks, manualDebts, db, UI, showToa
     showToast(taskId ? 'Списано, оплата привязана к задаче ✓' : 'Списание записано ✓');
   };
 
-  const topUp = (d) => {
-    if (!+topUpSum) { showToast('Укажи сумму пополнения', 'error'); return; }
-    db.topUpDeposit(d, +topUpSum);
-    showToast(`Депозит пополнен на ${fmt(+topUpSum)} ₽ ✓`);
-    setTopUpFor(null); setTopUpSum('');
+  const topUp = async (d) => {
+    if (isSavingTopUp) return;
+    if (!(+topUpSum > 0)) { showToast('Укажи сумму поступления', 'error'); return; }
+    setIsSavingTopUp(true);
+    const ok = await db.addDepositTopup(d, { what: topUpWhat.trim(), amount: +topUpSum, date: topUpDate || db.today });
+    setIsSavingTopUp(false);
+    if (!ok) return;
+    showToast(`Поступление ${fmt(+topUpSum)} ₽ записано ✓`);
+    setTopUpFor(null); setTopUpSum(''); setTopUpWhat('');
   };
 
   const input = {
@@ -220,23 +250,29 @@ export default function Deposits({ deposits, tasks, manualDebts, db, UI, showToa
                 <div style={{ width: `${pct}%`, height: '100%', background: pct < 20 ? '#c0392b' : UI.accent, borderRadius: 999 }} />
               </div>
 
-              {d.uses.length > 0 && (
-                <div style={{ background: UI.soft, borderRadius: 14, padding: '2px 12px', marginBottom: 10 }}>
-                  {d.uses.map((u, i) => isRowEditing('use', d, u) ? (
-                    <div key={i} style={{ borderBottom: i < d.uses.length - 1 ? `1px solid ${UI.line}` : 'none' }}>{rowEditForm(d, 'Сумма списания')}</div>
-                  ) : (
-                    <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '7px 0', borderBottom: i < d.uses.length - 1 ? `1px solid ${UI.line}` : 'none', fontSize: 13, flexWrap: 'wrap' }}>
-                      <span style={{ color: UI.muted, fontSize: 12, width: 40, flexShrink: 0 }}>{dm(u.date)}</span>
-                      <span style={{ fontWeight: 600 }}>{u.what}</span>
-                      {u.task_id && <span style={{ background: 'rgba(247,214,74,.4)', borderRadius: 999, padding: '1px 8px', fontSize: 11, fontWeight: 700 }}><I n="link" size={10} /> задача</span>}
+              <div style={{ background: UI.soft, borderRadius: 14, padding: '2px 12px', marginBottom: 10 }}>
+                {history(d).map(({ kind, row }, i, all) => {
+                  const sep = i < all.length - 1 ? `1px solid ${UI.line}` : 'none';
+                  const key = `${kind}-${row.id ?? i}`;
+                  if (isRowEditing(kind, d, row)) {
+                    return <div key={key} style={{ borderBottom: sep }}>{rowEditForm(d, kind === 'use' ? 'Сумма списания' : 'Сумма поступления')}</div>;
+                  }
+                  const isIn = kind !== 'use';
+                  return (
+                    <div key={key} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '7px 0', borderBottom: sep, fontSize: 13, flexWrap: 'wrap' }}>
+                      <span style={{ color: UI.muted, fontSize: 12, width: 40, flexShrink: 0 }}>{dm(row.date)}</span>
+                      <span style={{ fontWeight: 600 }}>{row.what || (isIn ? 'поступление' : '—')}</span>
+                      {row.task_id && <span style={{ background: 'rgba(247,214,74,.4)', borderRadius: 999, padding: '1px 8px', fontSize: 11, fontWeight: 700 }}><I n="link" size={10} /> задача</span>}
                       <span style={{ marginLeft: 'auto', display: 'flex', gap: 5, alignItems: 'center', flexShrink: 0 }}>
-                        {rowBtns('use', d, u, u.task_id ? 'Списание удалено (и его оплата с депозита)' : 'Списание удалено')}
-                        <span style={{ fontWeight: 700 }}>−{fmt(u.amount)} ₽</span>
+                        {rowBtns(kind, d, row, kind === 'topup' ? 'Поступление удалено' : row.task_id ? 'Списание удалено (и его оплата с депозита)' : 'Списание удалено')}
+                        {isIn
+                          ? <span style={{ fontWeight: 800, background: 'rgba(247,214,74,.5)', borderRadius: 999, padding: '1px 9px' }}>+{fmt(row.amount)} ₽</span>
+                          : <span style={{ fontWeight: 700 }}>−{fmt(row.amount)} ₽</span>}
                       </span>
                     </div>
-                  ))}
-                </div>
-              )}
+                  );
+                })}
+              </div>
 
               {/* Кнопки/форма — всегда прижаты к низу карточки */}
               <div style={{ marginTop: 'auto' }}>
@@ -275,19 +311,25 @@ export default function Deposits({ deposits, tasks, manualDebts, db, UI, showToa
                     </div>
                   </div>
                 ) : topUpFor === d.id ? (
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <input style={{ ...input, flex: 1, minWidth: 0 }} type="number" placeholder="Пополнить на, ₽" value={topUpSum} onChange={e => setTopUpSum(e.target.value)} />
-                    <button onClick={() => topUp(d)} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '0 20px', fontWeight: 800, fontSize: 13, flexShrink: 0 }}>ОК</button>
-                    <button onClick={() => setTopUpFor(null)} style={{ border: 'none', background: UI.soft, borderRadius: 999, padding: '0 14px', fontSize: 13, flexShrink: 0 }}>✕</button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input style={{ ...input, width: 140, flexShrink: 0 }} type="date" value={topUpDate} onChange={e => setTopUpDate(e.target.value)} />
+                      <input style={{ ...input, flex: 1, minWidth: 0 }} placeholder="Комментарий (можно пусто)" value={topUpWhat} onChange={e => setTopUpWhat(e.target.value)} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input style={{ ...input, flex: 1, minWidth: 0 }} type="number" placeholder="Сумма поступления, ₽" value={topUpSum} onChange={e => setTopUpSum(e.target.value)} onKeyDown={e => e.key === 'Enter' && topUp(d)} autoFocus />
+                      <button onClick={() => topUp(d)} disabled={isSavingTopUp} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '0 20px', fontWeight: 800, fontSize: 13, flexShrink: 0, opacity: isSavingTopUp ? 0.5 : 1 }}>ОК</button>
+                      <button onClick={() => setTopUpFor(null)} style={{ border: 'none', background: UI.soft, borderRadius: 999, padding: '0 14px', fontSize: 13, flexShrink: 0 }}>✕</button>
+                    </div>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button onClick={() => { setUseFor(d.id); setUseWhat(''); setUseAmount(''); setUseTaskId(''); }} style={{
                       flex: 1, border: 'none', background: UI.accent, borderRadius: 999, padding: '10px 0', fontWeight: 800, fontSize: 13,
                     }}>− Списать заказ</button>
-                    <button onClick={() => { setTopUpFor(d.id); setTopUpSum(''); }} style={{
-                      border: 'none', background: UI.soft, borderRadius: 999, padding: '10px 16px', fontWeight: 700, fontSize: 13,
-                    }}>+ Пополнить</button>
+                    <button onClick={() => { setTopUpFor(d.id); setTopUpSum(''); setTopUpWhat(''); setTopUpDate(db.today); }} style={{
+                      flex: 1, border: 'none', background: UI.soft, borderRadius: 999, padding: '10px 0', fontWeight: 800, fontSize: 13,
+                    }}>+ Поступление</button>
                   </div>
                 )}
               </div>
@@ -334,9 +376,10 @@ export default function Deposits({ deposits, tasks, manualDebts, db, UI, showToa
                   ) : (
                     <span style={{ fontWeight: 800, fontSize: 14.5 }}>{d.name}</span>
                   )}
+                  {/* Оплатили больше, чем взяли — показываем плюс суммой (просьба Кристи 2026-10-31) */}
                   {bal < 0
                     ? <span style={{ background: '#c0392b', color: '#fff', borderRadius: 999, padding: '3px 12px', fontSize: 12.5, fontWeight: 700 }}>долг {fmt(-bal)}</span>
-                    : <span style={{ background: 'rgba(247,214,74,.5)', borderRadius: 999, padding: '3px 12px', fontSize: 12.5, fontWeight: 700 }}>✓ без долга</span>}
+                    : <span style={{ background: 'rgba(247,214,74,.5)', borderRadius: 999, padding: '3px 12px', fontSize: 12.5, fontWeight: 700 }}>{bal > 0 ? `+${fmt(bal)} ₽` : '✓ без долга'}</span>}
                   {mdEditId !== d.id && (
                     <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                       <button onClick={() => { setMdEditId(d.id); setMdEditName(d.name); }} title="Исправить имя" style={{

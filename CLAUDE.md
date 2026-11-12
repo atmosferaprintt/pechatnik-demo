@@ -11,7 +11,7 @@ CRM для типографии/копицентра «ПЕЧАТНИК» (за�
 - **Без роутера** — навигация вкладками через `useState` + `localStorage` (ключ `tab`)
 - **Без UI-библиотек** — inline-стили через style-объекты, эмодзи как визуальные маркеры
 - PDF: `jspdf` + `html2canvas`; Excel: `xlsx`
-- Деплой: Docker (node build → nginx) на VPS через `scripts/deploy.sh` (rsync)
+- Деплой: Docker (node build → nginx) на VPS через `scripts/deploy.sh` (rsync), сервер — см. «Сервер» ниже
 
 ```bash
 npm run dev      # dev-сервер Vite с HMR
@@ -19,6 +19,17 @@ npm run build    # прод-сборка → dist/
 npm run lint     # ESLint
 npm run preview  # локальный просмотр прод-сборки
 ```
+
+## Сервер (с 2026-11-12)
+
+Старый VPS Beget 159.194.213.28 погиб вместе с базой и копиями. С 12.11.2026 CRM **гостит на сервере Атмосферы** (Selectel 136.234.75.50, там же atm-crm.ru), базы не смешиваются:
+- **Supabase ПЕЧАТНИКА** — `/opt/pechatnik-supabase` (конфиг в репо: [server/supabase/](server/supabase/)): контейнеры `pechatnik-db/auth/rest/realtime/kong`, сеть `pechatnik_net`, наружу ничего не опубликовано, секреты в `.env` только на сервере.
+- **Сайт** — `/opt/pechatnik-web`, контейнер `pechatnik-web` на `127.0.0.1:8081`, API проксирует его nginx в `pechatnik-kong`.
+- **Caddy** общий: блок `crm.pechatnik-cherkessk.ru` во всех `/etc/caddy/Caddyfile*`.
+- **Чужое не трогать:** `supabase-db`, `supabase-kong`, порты 8000/8080 и `/opt/supabase` принадлежат **Атмосфере**. Наша база — только `pechatnik-db`.
+- **Бэкапы:** каждый час `/opt/backup-pechatnik-db.sh` → `/opt/backups/pechatnik/` (14 дней), раз в сутки на мак `~/Pechatnik-backups/` (launchd `ru.pechatnik.backup`, скрипт [scripts/pull-backup-mac.sh](scripts/pull-backup-mac.sh)).
+- ssh с мака — с `-o BindInterface=en0` (VPN рвёт соединение), `deploy.sh` делает это сам.
+- Новая база начата пустой; id записей с 1 000 000, чтобы старые данные с Beget, если вернутся, встали без конфликтов.
 
 ## Архитектура — с первого дня
 
@@ -45,7 +56,7 @@ npm run preview  # локальный просмотр прод-сборки
 - `.select()` отдаёт максимум 1000 строк — с первого дня использовать хелпер `loadAllRows(table, columns, pageSize=1000)` с пагинацией через `.range()`.
 - **RLS:** решение зафиксировать до первой таблицы (в PrintCRM RLS выключен, права проверяются в коде на клиенте). Пока не решено — спросить Рабию.
 - **Миграции — SQL-файлами в `supabase/migrations/`** (`NNN_имя.sql`, по порядку). На прод их накатывает `scripts/deploy.sh` перед выкладкой фронта: сверяет файлы с журналом `schema_migrations` (027) и накатывает недостающие, каждую в своей транзакции. `./scripts/deploy.sh --check` только показывает, каких миграций нет на проде. Поэтому незаконченную миграцию в папку не кладём: деплой накатит всё, что там лежит.
-- Realtime-подписки через `.on('postgres_changes', …)` для живых обновлений. Публикация `supabase_realtime` на проде перечисляет таблицы **поштучно** (не `for all tables`): новую таблицу добавлять в неё в своей миграции (образец — 026). `deposits` и `deposit_uses` в публикацию не входят.
+- Realtime-подписки через `.on('postgres_changes', …)` для живых обновлений. Публикация `supabase_realtime` на проде перечисляет таблицы **поштучно** (не `for all tables`): новую таблицу добавлять в неё в своей миграции (образец — 026). С 028 в ней все таблицы `public`, кроме `schema_migrations`.
 - Телефоны нормализовать до 10 цифр для сопоставления (как `normalizePhone()` в PrintCRM).
 
 ## Соглашения по коду

@@ -1,5 +1,6 @@
-# CRM «ПЕЧАТНИК» — прод-контейнер (порт 80).
+# CRM «ПЕЧАТНИК» — прод-контейнер на сервере 136.234.75.50 (общем с Атмосферой, с 2026-11-12).
 # VITE_-переменные зашиваются в бандл при сборке; значения берутся из /opt/pechatnik-web/.env на сервере.
+# Supabase — свой комплект в /opt/pechatnik-supabase (server/supabase/), сайт ходит в него по сети pechatnik_net.
 services:
   pechatnik-web:
     build:
@@ -9,6 +10,14 @@ services:
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
     container_name: pechatnik-web
     ports:
-      # 80/443 снаружи занимает Caddy (HTTPS для crm.pechatnik-cherkessk.ru) и проксирует сюда
-      - "127.0.0.1:8080:80"
+      # 80/443 снаружи занимает Caddy (HTTPS для crm.pechatnik-cherkessk.ru) и проксирует сюда.
+      # 8080 — сайт Атмосферы, не трогать.
+      - "127.0.0.1:8081:80"
+    networks:
+      - pechatnik
     restart: unless-stopped
+
+networks:
+  pechatnik:
+    external: true
+    name: pechatnik_net

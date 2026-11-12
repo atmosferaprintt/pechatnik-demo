@@ -8,11 +8,18 @@
 # и 01.11 не записывались операции. Упала миграция — деплой останавливается, сайт остаётся прежним.
 set -e
 
-SERVER="root@159.194.213.28"
+# С 2026-11-12 — сервер Selectel, общий с Атмосферой (старый Beget 159.194.213.28 погиб вместе с базой).
+SERVER="root@136.234.75.50"
 DIR="/opt/pechatnik-web"
+SITE="crm.pechatnik-cherkessk.ru"
 # Одно ssh-соединение на весь деплой: серию подключений подряд сервер ловит fail2ban'ом
 SSH_OPTS="-o ControlMaster=auto -o ControlPath=$HOME/.ssh/cm-pechatnik-%C -o ControlPersist=60 -o ConnectTimeout=15"
-PSQL="docker exec -i supabase-db psql -U postgres -d postgres -v ON_ERROR_STOP=1"
+# VPN на маке не пускает ssh до сервера — сначала пробуем мимо него, через Wi-Fi (en0)
+if ssh -n $SSH_OPTS -o BindInterface=en0 "$SERVER" true 2>/dev/null; then
+  SSH_OPTS="$SSH_OPTS -o BindInterface=en0"
+fi
+# База ПЕЧАТНИКА — контейнер pechatnik-db. НИКОГДА не supabase-db: на этом сервере это база Атмосферы.
+PSQL="docker exec -i pechatnik-db psql -U postgres -d postgres -v ON_ERROR_STOP=1"
 
 echo "→ миграции"
 # -n: ssh не должен съедать stdin того, кто запустил скрипт
@@ -53,9 +60,10 @@ ssh -n $SSH_OPTS "$SERVER" "cd $DIR && docker compose build --quiet && docker co
 
 echo "→ проверка"
 sleep 3
-code=$(curl -s -o /dev/null -w '%{http_code}' http://159.194.213.28/)
+# Проверяем с самого сервера через Caddy и https: с мака мешает VPN
+code=$(ssh -n $SSH_OPTS "$SERVER" "curl -s -o /dev/null -w '%{http_code}' --resolve $SITE:443:127.0.0.1 https://$SITE/")
 if [ "$code" = "200" ]; then
-  echo "✓ Деплой успешен: http://159.194.213.28/ отвечает 200"
+  echo "✓ Деплой успешен: https://$SITE/ отвечает 200"
 else
   echo "✗ Ошибка: HTTP $code" && exit 1
 fi

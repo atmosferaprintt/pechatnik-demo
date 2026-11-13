@@ -1,5 +1,5 @@
 // Правка записи в «Деньгах» на телефоне.
-// Права те же, что на компьютере: сотрудница правит свои записи за сегодня/вчера,
+// Права те же, что на компьютере: сотрудница правит свои записи за последние 3 дня (030),
 // владелец — любые, ему же доступны дата и удаление. Всё пишется в историю (триггер БД, 010).
 import { useState } from 'react';
 import CatPicker from '../../CatPicker.jsx';
@@ -16,10 +16,10 @@ export default function MTxEdit({ tx, onClose, categories, banks, tasks, transac
   const [comment, setComment] = useState(tx.comment || '');
   const [date, setDate] = useState(tx.op_date);
 
-  // Свою сегодняшнюю запись автор может удалить сам (политика tx_employee_delete в базе это
-  // разрешала, а кнопки не было — случай Марьян 2026-09-17 с восемью дублями доставки).
+  // Свою запись за последние 3 дня автор может удалить сам (политика tx_employee_delete, с 030 —
+  // сегодня/вчера/позавчера; кнопка появилась после случая Марьян 2026-09-17 с восемью дублями доставки).
   // Удаление пишется в журнал серверным триггером (010), так что Кристи всё видит.
-  const canDelete = isOwner || (tx.created_by === currentUser?.name && tx.op_date === db.today);
+  const canDelete = isOwner || (tx.created_by === currentUser?.name && tx.op_date >= db.editFrom);
 
   const isRefund = isRefundCat(categories.find(c => c.id === +cat));
   // Категории того же сорта, что у записи: доход / рабочий расход / личный расход

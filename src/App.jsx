@@ -228,6 +228,12 @@ const DEMO_BANK_ROWS = [
 // Реальные «сегодня/вчера» считаются один раз при загрузке приложения — по МЕСТНОМУ времени
 const REAL_TODAY = localDate();
 const REAL_YESTERDAY = localDate(new Date(Date.now() - 864e5));
+// Позавчера: с этого дня сотрудница может записывать и править свои записи (3 дня, миграция 030)
+const REAL_EDIT_FROM = localDate(new Date(Date.now() - 2 * 864e5));
+
+// Уволенную база не обслуживает (миграция 029): PostgREST отвечает 403 с кодом PT403
+const isFiredError = (e) => e?.code === 'PT403';
+const FIRED_MSG = 'Доступ закрыт — обратитесь к Кристи';
 
 // Supabase отдаёт максимум 1000 строк — всегда тянем страницами.
 async function loadAllRows(table, columns = '*', pageSize = 1000, filter = null) {
@@ -297,11 +303,21 @@ export default function App() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  // Уволили, пока вкладка открыта: realtime дёргает loadAll, база отвечает 403 — выходим.
+  // scope: 'local' — сессий на сервере уже нет, звать /logout незачем.
+  const kickFired = useCallback(() => {
+    supabase.auth.signOut({ scope: 'local' });
+    showToast(FIRED_MSG, 'error');
+  }, [showToast]);
+
   useEffect(() => {
     if (DEMO || !session?.user) return;
     supabase.from('profiles').select('*').eq('id', session.user.id).single()
-      .then(({ data }) => setCurrentUser(data));
-  }, [session]);
+      .then(({ data, error }) => {
+        if (isFiredError(error)) { kickFired(); return; }
+        setCurrentUser(data);
+      });
+  }, [session, kickFired]);
 
   // ---------- Данные: полная загрузка из Supabase + приведение к формату секций ----------
   const loadAll = useCallback(async () => {
@@ -395,11 +411,12 @@ export default function App() {
       setTxLogs(txLog.map(l => ({ ...l, time: logT(l.created_at) })));
     } catch (e) {
       console.error(e);
-      showToast('Ошибка загрузки данных: ' + (e.message || e), 'error');
+      if (isFiredError(e)) kickFired();
+      else showToast('Ошибка загрузки данных: ' + (e.message || e), 'error');
     } finally {
       setLoading(false);
     }
-  }, [session, showToast]);
+  }, [session, showToast, kickFired]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- первичная загрузка данных при входе
   useEffect(() => { loadAll(); }, [loadAll]);
@@ -417,7 +434,9 @@ export default function App() {
     return () => { clearTimeout(timer); supabase.removeChannel(ch); };
   }, [session, loadAll]);
 
-  if (!DEMO && !session) return <LoginScreen showToast={showToast} />;
+  // Тост рисуем и на экране входа: раньше он жил только внутри CRM, и «проверь логин и пароль» /
+  // «доступ закрыт» никто не видел (найдено 2026-11-13)
+  if (!DEMO && !session) return <>{<LoginScreen showToast={showToast} />}{toast && <Toast toast={toast} UI={UI} />}</>;
   if (!DEMO && session && currentUser === null) {
     return <Center><p style={{ color: UI.muted }}>Загружаю профиль…</p></Center>;
   }
@@ -448,6 +467,7 @@ export default function App() {
   const db = {
     today: DEMO ? '2026-07-14' : REAL_TODAY,
     yesterday: DEMO ? '2026-07-13' : REAL_YESTERDAY,
+    editFrom: DEMO ? '2026-07-12' : REAL_EDIT_FROM,
     profName: (id) => users.find(u => u.id === id)?.name || '—',
 
     async addTransactions(recs) { // recs без id/created_by/time — проставляются здесь
@@ -493,7 +513,7 @@ export default function App() {
       if (!DEMO) {
         const { data, error } = await supabase.from('day_closures').delete().eq('close_date', date).select();
         if (error) return fail(error);
-        if (!data?.length) { showToast('Не удалось отменить — закрытие слишком старое', 'error'); return null; } // RLS: сотрудницам доступны только сегодня/вчера
+        if (!data?.length) { showToast('Не удалось отменить — закрытие слишком старое', 'error'); return null; } // RLS: сотрудницам доступны только последние 3 дня (030)
       }
       setDayClosures(prev => prev.filter(c => c.date !== date));
       return true;
@@ -1158,7 +1178,8 @@ function LoginScreen({ showToast }) {
     const email = login.includes('@') ? login.trim() : `${login.trim().toLowerCase()}@crm.local`;
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setBusy(false);
-    if (error) showToast('Не удалось войти: проверь логин и пароль', 'error');
+    // Уволенную GoTrue не пускает с кодом user_banned (миграция 029)
+    if (error) showToast(error.code === 'user_banned' ? FIRED_MSG : 'Не удалось войти: проверь логин и пароль', 'error');
   };
 
   const inputStyle = {

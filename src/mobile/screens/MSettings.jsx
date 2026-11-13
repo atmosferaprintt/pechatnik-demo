@@ -251,7 +251,7 @@ function UserEdit({ u, users, tasks, db, showToast, onDone }) {
     }
     const ok = await db.updateUser(u, { is_active: u.is_active === false });
     if (!ok) return;
-    showToast(u.is_active === false ? `${u.name} снова работает ✓` : `${u.name} убрана из активных`);
+    showToast(u.is_active === false ? `${u.name} снова работает, вход открыт ✓` : `${u.name} уволена, вход закрыт`);
   };
 
   return (

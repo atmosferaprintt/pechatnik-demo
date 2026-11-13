@@ -45,10 +45,16 @@ export default function MFinance(props) {
 
   const isToday = opDate === db.today;
   const isYesterday = opDate === db.yesterday;
-  // Сотрудница смотрит неделю, правит только сегодня и вчера (миграция 016)
+  const isDayBefore = opDate === db.editFrom;
+  // Сотрудница смотрит неделю (016), записывает и правит свои записи за последние 3 дня:
+  // сегодня, вчера, позавчера (030). Новая запись ложится в открытый день, со старого — на сегодня.
   const weekAgo = (() => { const d = new Date(db.today + 'T12:00:00'); d.setDate(d.getDate() - 6); return d.toISOString().slice(0, 10); })();
   const canGoBack = isOwner || opDate > weekAgo;
-  const canEditDay = isToday || isYesterday;
+  const canEditDay = opDate >= db.editFrom;
+  const entryDate = canEditDay ? opDate : db.today;
+  const ddmm = (d) => `${d.slice(8, 10)}.${d.slice(5, 7)}`;
+  const dayWord = isToday ? 'сегодня' : isYesterday ? 'вчера' : isDayBefore ? 'позавчера' : RU_DATE(opDate);
+  const whenNote = entryDate !== db.today ? ` за ${ddmm(entryDate)}` : '';
 
   const { dailyTx, bigTx, bigTotal, personalTx, personalTotal, income, expense, carry, cashFlow, cashCalc, closure, dayTx } =
     dayMoney({ transactions, categories, dayClosures, date: opDate });
@@ -71,8 +77,8 @@ export default function MFinance(props) {
     if (!cat) { showToast('Нет такой категории', 'error'); return; }
     setQuickBusy(true);
     try {
-      const ok = await db.addTransactions([{ type: 'income', category_id: cat.id, amount: q.amount, payment_method: 'cash', bank_id: null, comment: '' }]);
-      if (ok) showToast(`${q.label} — записано ✓`);
+      const ok = await db.addTransactions([{ type: 'income', category_id: cat.id, amount: q.amount, payment_method: 'cash', bank_id: null, comment: '', op_date: entryDate }]);
+      if (ok) showToast(`${q.label} — записано${whenNote} ✓`);
     } finally { setQuickBusy(false); }
   };
 
@@ -115,7 +121,7 @@ export default function MFinance(props) {
         <button onClick={() => canGoBack && setOpDate(shift(opDate, -1))} disabled={!canGoBack} aria-label="День назад"
           style={{ ...navBtn, opacity: canGoBack ? 1 : .3 }}><I n="chevronLeft" size={15} /></button>
         <span style={{ flex: 1, textAlign: 'center', fontSize: 13.5, fontWeight: 800 }}>
-          {isToday ? `Сегодня · ${opDate.slice(8, 10)}.${opDate.slice(5, 7)}` : isYesterday ? `Вчера · ${opDate.slice(8, 10)}.${opDate.slice(5, 7)}` : RU_DATE(opDate)}
+          {isToday ? `Сегодня · ${ddmm(opDate)}` : isYesterday ? `Вчера · ${ddmm(opDate)}` : isDayBefore ? `Позавчера · ${ddmm(opDate)}` : RU_DATE(opDate)}
         </span>
         <button onClick={() => !isToday && setOpDate(shift(opDate, 1))} disabled={isToday} aria-label="День вперёд"
           style={{ ...navBtn, opacity: isToday ? .3 : 1 }}><I n="chevronRight" size={15} /></button>
@@ -161,7 +167,7 @@ export default function MFinance(props) {
           const t = g[0];
           const total = g.reduce((s, x) => s + x.amount, 0);
           const inc = t.type === 'income';
-          // Правит свои записи сотрудница только за сегодня/вчера; владелец — любые
+          // Правит свои записи сотрудница за последние 3 дня; владелец — любые
           const mayEdit = isOwner || (canEditDay && t.created_by === currentUser.name);
           return (
             <div key={t.id} onClick={() => mayEdit && setEditTx(t)} style={{
@@ -274,11 +280,13 @@ export default function MFinance(props) {
       )}
 
       {/* Шит: запись операции */}
-      <Sheet open={showForm} onClose={() => setShowForm(false)} title="Новая операция">
+      {/* В заголовке — куда ляжет запись, чтобы сегодняшнюю оплату не записали во вчера по ошибке */}
+      <Sheet open={showForm} onClose={() => setShowForm(false)}
+        title={isToday ? 'Новая операция' : canEditDay ? `Новая операция · за ${dayWord} ${ddmm(entryDate)}` : 'Новая операция · на сегодня'}>
         <EntryForm {...props} prefillTaskId={prefillTaskId}
           onSave={async (recs) => {
-            const ok = await db.addTransactions(recs);
-            if (ok) { showToast('Записано ✓'); setShowForm(false); }
+            const ok = await db.addTransactions(recs.map(r => ({ ...r, op_date: entryDate })));
+            if (ok) { showToast(`Записано${whenNote} ✓`); setShowForm(false); }
             return ok;
           }} />
       </Sheet>

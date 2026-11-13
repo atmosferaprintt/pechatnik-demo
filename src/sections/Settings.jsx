@@ -1,6 +1,7 @@
 // Раздел «Настройки» — только владелец: категории, банки/карты, пользователи.
 // Сотрудников Кристи ведёт сама: создать (имя+логин+пароль), отредактировать, сменить пароль,
 // уволить/вернуть. Новый сотрудник = колонка в Задачах; переименование переносит задачник.
+// «Уволить» с 029 закрывает и вход: бан в GoTrue, сессии удаляются, API отвечает 403.
 // В проде это RPC admin_create_user / admin_update_user (только для владельца).
 import { useState } from 'react';
 import I from '../Icon.jsx';
@@ -90,7 +91,7 @@ export default function Settings({ categories, banks, users, tasks, quickOps, db
     }
     const ok = await db.updateUser(u, { is_active: u.is_active === false });
     if (!ok) return;
-    showToast(u.is_active === false ? `${u.name} снова работает ✓` : `${u.name} убрана из активных`);
+    showToast(u.is_active === false ? `${u.name} снова работает, вход открыт ✓` : `${u.name} уволена, вход закрыт`);
   };
 
   return (

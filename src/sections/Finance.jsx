@@ -80,17 +80,19 @@ function groupByBatch(list) {
 // Позже владелец сможет настраивать этот список в Настройках.
 
 // ---------- Взгляд сотрудника ----------
-// Вид сотрудника (с 2026-07-16, просьба Кристи): доступ к сегодня + вчера,
-// закрытие смены и перенос вчерашних оплат на сегодня. Итоги по банку/месяцу — только у Кристи.
+// Вид сотрудника (с 2026-07-16, просьба Кристи): записи за последние 3 дня (сегодня, вчера,
+// позавчера — с 2026-11-13, миграция 030), закрытие смены и перенос вчерашних оплат на сегодня.
+// Итоги по банку/месяцу — только у Кристи.
 function EmployeeView(props) {
   const { transactions, categories, banks, tasks, currentUser, isOwnerAccount, dayClosures, db, quickOps, PAYMENT_METHODS, UI, showToast } = props;
   const TODAY_D = db.today;
   const YESTERDAY_D = db.yesterday;
+  const EDIT_FROM_D = db.editFrom;
   const [opDate, setOpDate] = useState(TODAY_D);
   const [cashFact, setCashFact] = useState('');
   const [cashTaken, setCashTaken] = useState(''); // сдано: Кристи забирает крупную наличку при закрытии
   const [mFlt, setMFlt] = useState(''); // фильтр по способу оплаты
-  // Правка СВОЕЙ записи (сегодня/вчера): категория, сумма, способ, задача, комментарий.
+  // Правка СВОЕЙ записи (последние 3 дня, 030): категория, сумма, способ, задача, комментарий.
   // Права в базе готовы с миграции 008 — UI дошёл 2026-07-17 (просьбы: «карта была, а я нал выбрала»,
   // «записала оплату — можно ли подкрепить к задаче?»). Всё пишется в историю и журнал Кристи.
   const [empEdit, setEmpEdit] = useState(null);
@@ -127,8 +129,14 @@ function EmployeeView(props) {
   };
   const isToday = opDate === TODAY_D;
   const isYesterday = opDate === YESTERDAY_D;
+  const isDayBefore = opDate === EDIT_FROM_D;
   // Просмотр последней недели (просьба Кристи 2026-07-21, миграция 016);
-  // правка/переносы/закрытие смены — по-прежнему только сегодня и вчера
+  // записать/поправить/удалить свою запись и закрыть смену — за последние 3 дня (030).
+  // Новая запись ложится в открытый день; со старого дня (только просмотр) — на сегодня.
+  const canEditDay = opDate >= EDIT_FROM_D;
+  const entryDate = canEditDay ? opDate : TODAY_D;
+  const dayWord = isToday ? 'сегодня' : isYesterday ? 'вчера' : isDayBefore ? 'позавчера' : RU_DATE(opDate);
+  const ddmm = (d) => `${d.slice(8, 10)}.${d.slice(5, 7)}`;
   const shiftDay = (dir) => {
     const d = new Date(opDate + 'T12:00:00');
     d.setDate(d.getDate() + dir);
@@ -157,8 +165,8 @@ function EmployeeView(props) {
     if (!cat) { showToast('Нет такой категории', 'error'); return; }
     setQuickBusy(true);
     try {
-      const ok = await db.addTransactions([{ type: 'income', category_id: cat.id, amount: q.amount, payment_method: 'cash', bank_id: null, comment: '' }]);
-      if (ok) showToast(`${q.label} — записано ✓`);
+      const ok = await db.addTransactions([{ type: 'income', category_id: cat.id, amount: q.amount, payment_method: 'cash', bank_id: null, comment: '', op_date: entryDate }]);
+      if (ok) showToast(`${q.label} — записано${entryDate !== TODAY_D ? ` за ${ddmm(entryDate)}` : ''} ✓`);
     } finally { setQuickBusy(false); }
   };
 
@@ -182,14 +190,14 @@ function EmployeeView(props) {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0 20px', flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: 34, fontWeight: 500, margin: 0 }}>Финансы</h1>
-        {/* Просмотр последней недели стрелками; правка — только сегодня/вчера */}
+        {/* Просмотр последней недели стрелками; записи и правка — последние 3 дня */}
         <div style={{ display: 'flex', alignItems: 'center', background: '#fff', borderRadius: 999, padding: 5, boxShadow: UI.shadow }}>
           <button onClick={() => shiftDay(-1)} disabled={opDate <= weekAgoD} style={{
             border: 'none', background: UI.soft, borderRadius: 999, width: 34, height: 34, fontSize: 15,
             opacity: opDate <= weekAgoD ? 0.3 : 1, cursor: 'pointer',
           }}>←</button>
           <span style={{ padding: '0 14px', fontSize: 13.5, fontWeight: 800 }}>
-            {isToday ? `Сегодня · ${opDate.slice(8, 10)}.${opDate.slice(5, 7)}` : isYesterday ? `Вчера · ${opDate.slice(8, 10)}.${opDate.slice(5, 7)}` : RU_DATE(opDate)}
+            {isToday ? `Сегодня · ${ddmm(opDate)}` : isYesterday ? `Вчера · ${ddmm(opDate)}` : isDayBefore ? `Позавчера · ${ddmm(opDate)}` : RU_DATE(opDate)}
           </span>
           <button onClick={() => shiftDay(1)} disabled={isToday} style={{
             border: 'none', background: UI.soft, borderRadius: 999, width: 34, height: 34, fontSize: 15,
@@ -217,9 +225,24 @@ function EmployeeView(props) {
               <div style={{ borderTop: `1px solid ${UI.line}`, marginBottom: 16 }} />
             </>
           )}
+          {/* Открыт не сегодняшний день — заметно говорим, куда ляжет запись, чтобы сегодняшнюю оплату
+              не записали во вчера по ошибке */}
+          {!isToday && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14, borderRadius: 14, padding: '9px 12px',
+              fontSize: 13, fontWeight: 700,
+              background: canEditDay ? 'rgba(247,214,74,.35)' : UI.soft,
+            }}>
+              <span>{canEditDay ? `Запись пойдёт за ${dayWord} · ${ddmm(entryDate)}` : 'Этот день только для просмотра — запись пойдёт на сегодня'}</span>
+              <button onClick={() => setOpDate(TODAY_D)} style={{
+                border: 'none', background: '#fff', borderRadius: 999, padding: '4px 11px', fontSize: 12, fontWeight: 800, marginLeft: 'auto', cursor: 'pointer',
+              }}>к сегодня</button>
+            </div>
+          )}
           <EntryForm {...props} onSave={async (recs) => {
-            const ok = await db.addTransactions(recs);
-            if (ok) showToast(recs.length > 1 ? `Записано ${recs.length} статьями ✓` : 'Записано ✓');
+            const ok = await db.addTransactions(recs.map(r => ({ ...r, op_date: entryDate })));
+            const when = entryDate !== TODAY_D ? ` за ${ddmm(entryDate)}` : '';
+            if (ok) showToast(recs.length > 1 ? `Записано${when} ${recs.length} статьями ✓` : `Записано${when} ✓`);
             return ok;
           }} />
         </div>
@@ -227,13 +250,15 @@ function EmployeeView(props) {
         <div style={{ flex: 1, minWidth: 320, display: 'flex', flexDirection: 'column', gap: 20 }}>
           {/* Лента: сотрудница видит только свои записи, владельческий аккаунт — все */}
           <div style={{ background: '#fff', borderRadius: 26, boxShadow: UI.shadow, padding: 26 }}>
-            <div style={{ fontWeight: 800, marginBottom: 4 }}>{isOwnerAccount ? 'Операции' : 'Мои записи'} за {isToday ? 'сегодня' : isYesterday ? 'вчера' : RU_DATE(opDate)} · {feedTx.length}</div>
+            <div style={{ fontWeight: 800, marginBottom: 4 }}>{isOwnerAccount ? 'Операции' : 'Мои записи'} за {dayWord} · {feedTx.length}</div>
             <div style={{ color: UI.muted, fontSize: 13, marginBottom: 10 }}>
               {isToday
                 ? (isOwnerAccount ? 'Всё, что записано за день — по этому закрывается смена' : 'Твои записи за день. Смена закрывается по всем операциям дня')
                 : isYesterday
-                  ? 'Вчерашний день: оплату можно перекинуть на сегодня ↪'
-                  : 'Старый день — только просмотр, менять записи можно за сегодня и вчера'}
+                  ? 'Вчерашний день: можно дописать и поправить записи, оплату — перекинуть на сегодня ↪'
+                  : isDayBefore
+                    ? 'Позавчерашний день: можно дописать и поправить записи'
+                    : 'Старый день — только просмотр, менять записи можно за последние 3 дня'}
             </div>
             {/* Фильтр по способам оплаты — кнопки строятся из того, что есть в ленте */}
             {feedTx.length > 0 && (
@@ -265,7 +290,7 @@ function EmployeeView(props) {
                       <I n="clock" size={12} />
                     </span>
                   )}
-                  {(isToday || isYesterday || isOwnerAccount) && (t.created_by === currentUser.name || isOwnerAccount) && t.payment_method !== 'deposit' && (
+                  {(canEditDay || isOwnerAccount) && (t.created_by === currentUser.name || isOwnerAccount) && t.payment_method !== 'deposit' && (
                     <button onClick={() => openEmpEdit(t)} title="Исправить (способ оплаты, сумма, задача…)" style={{
                       border: 'none', background: UI.soft, borderRadius: 999, width: 26, height: 26, fontSize: 11, cursor: 'pointer',
                     }}><I n="pencil" size={11} /></button>
@@ -276,14 +301,15 @@ function EmployeeView(props) {
                     }}>↪</button>
                   )}
                   {isToday && (t.created_by === currentUser.name || isOwnerAccount) && (
-                    <>
-                      <button onClick={() => { db.moveTxToYesterday(t); showToast('Перенесена во вчера ↩'); }} title="Эта оплата была вчера — перенести во вчера" style={{
-                        border: 'none', background: UI.soft, borderRadius: 999, width: 26, height: 26, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                      }}>↩</button>
-                      <button onClick={() => { db.removeTransaction(t); showToast('Запись удалена — внеси заново, если нужно'); }} title="Удалить (ошиблась)" style={{
-                        border: 'none', background: UI.soft, borderRadius: 999, width: 26, height: 26, fontSize: 12, color: UI.muted, cursor: 'pointer',
-                      }}>✕</button>
-                    </>
+                    <button onClick={() => { db.moveTxToYesterday(t); showToast('Перенесена во вчера ↩'); }} title="Эта оплата была вчера — перенести во вчера" style={{
+                      border: 'none', background: UI.soft, borderRadius: 999, width: 26, height: 26, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                    }}>↩</button>
+                  )}
+                  {/* Удалить свою ошибочную запись — за последние 3 дня (030) */}
+                  {canEditDay && (t.created_by === currentUser.name || isOwnerAccount) && (
+                    <button onClick={() => { db.removeTransaction(t); showToast('Запись удалена — внеси заново, если нужно'); }} title="Удалить (ошиблась)" style={{
+                      border: 'none', background: UI.soft, borderRadius: 999, width: 26, height: 26, fontSize: 12, color: UI.muted, cursor: 'pointer',
+                    }}>✕</button>
                   )}
                 </>
               );
@@ -330,8 +356,8 @@ function EmployeeView(props) {
             {!feedTx.length && <div style={{ color: UI.muted, fontSize: 14 }}>Записей нет</div>}
           </div>
 
-          {/* Закрытие смены — только сегодня/вчера (за старые дни у сотрудницы нет закрытий в доступе) */}
-          {(isToday || isYesterday) && (
+          {/* Закрытие смены — за последние 3 дня (за старые дни у сотрудницы нет закрытий в доступе, 030) */}
+          {canEditDay && (
           <div style={{ background: UI.dark, color: '#fff', borderRadius: 26, padding: 24 }}>
             <div style={{ fontWeight: 800, marginBottom: 10 }}>Закрытие смены · {opDate.slice(8, 10)}.{opDate.slice(5, 7)}</div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '6px 0' }}>

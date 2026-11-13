@@ -37,16 +37,24 @@ export default function MTxEdit({ tx, onClose, categories, banks, tasks, transac
       payment_method: method, bank_id: method === 'transfer' ? +bank || null : null,
       comment: comment.trim(), task_id: taskId ? +taskId : null,
     };
-    if (isOwner && date !== tx.op_date) patch.op_date = date;
+    const moved = date && date !== tx.op_date;
+    if (moved) { patch.op_date = date; patch.moved_from = null; }
     // Клиент подтягивается от задачи: иначе оплата повиснет на прежнем клиенте
     if ((patch.task_id || null) !== (tx.task_id || null)) {
       patch.client_id = patch.task_id ? tasks.find(x => x.id === patch.task_id)?.client_id || null : null;
     }
     const ok = await db.updateTransaction(tx, patch);
     if (!ok) return;
+    if (moved) for (const x of batchRest) await db.updateTransaction(x, { op_date: date, moved_from: null });
     onClose();
-    showToast('Исправлено ✓ (в историю записалось, что поменялось)');
+    showToast(moved ? `Перенесена за ${ddmm(date)} ✓ — теперь она в том дне` : 'Исправлено ✓ (в историю записалось, что поменялось)');
   };
+
+  // Сотрудница переносит свою запись между сегодня/вчера/позавчера (просьба Кристи 2026-11-13),
+  // владелец — на любую дату. Разбитая оплата (один чек на несколько статей) переезжает целиком.
+  const ddmm = (d) => `${d.slice(8, 10)}.${d.slice(5, 7)}`;
+  const empDays = [[db.today, 'Сегодня'], [db.yesterday, 'Вчера'], [db.editFrom, 'Позавчера']];
+  const batchRest = tx.batch_id ? transactions.filter(x => x.batch_id === tx.batch_id && x.id !== tx.id) : [];
 
   return (
     <Sheet open onClose={onClose} title="Правка записи"
@@ -93,17 +101,31 @@ export default function MTxEdit({ tx, onClose, categories, banks, tasks, transac
         </Field>
       )}
 
-      {isOwner && (
+      {isOwner ? (
         <Field label="Дата операции">
           <input style={inputStyle} type="date" value={date} onChange={e => setDate(e.target.value)} />
         </Field>
+      ) : tx.op_date >= db.editFrom && (
+        <Field label="День оплаты">
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {empDays.map(([d, l]) => (
+              <button key={d} onClick={() => setDate(d)} style={{
+                border: 'none', borderRadius: 999, padding: '10px 15px', fontSize: 13, fontWeight: 600, minHeight: 42,
+                background: date === d ? M.accent : M.card,
+              }}>{l} · {ddmm(d)}</button>
+            ))}
+          </div>
+        </Field>
+      )}
+      {date !== tx.op_date && batchRest.length > 0 && (
+        <div style={{ color: M.muted, fontSize: 12.5, margin: '-6px 0 12px' }}>Оплата разбита на {batchRest.length + 1} статьи — переедет целиком</div>
       )}
 
       <Field label="Комментарий">
         <input style={inputStyle} value={comment} onChange={e => setComment(e.target.value)} placeholder="Необязательно" />
       </Field>
 
-      {/* Владелец удаляет любую, сотрудница — свою за сегодня */}
+      {/* Владелец удаляет любую, сотрудница — свою за последние 3 дня */}
       {canDelete && (
         <Btn kind="danger" wide style={{ marginTop: 4 }}
           onClick={async () => {

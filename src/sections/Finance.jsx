@@ -102,14 +102,21 @@ function EmployeeView(props) {
   const [emBank, setEmBank] = useState('');
   const [emTask, setEmTask] = useState('');
   const [emComment, setEmComment] = useState('');
+  // День записи: перенести свою оплату на сегодня/вчера/позавчера (просьба Кристи 2026-11-13:
+  // «нет возможности перенести на позавчера оплату» — записали сегодняшним днём, а была 11.11)
+  const [emDate, setEmDate] = useState('');
   // Возврат клиенту — расход, который тоже привязывается к задаче (2026-08-13)
   const emRefund = isRefundCat(categories.find(c => c.id === +emCat));
+  const emDays = [[TODAY_D, 'Сегодня'], [YESTERDAY_D, 'Вчера'], [EDIT_FROM_D, 'Позавчера']];
+  // Разбитая оплата (несколько статей одного чека) переезжает целиком, чтобы чек не разошёлся по дням
+  const emBatch = empEdit?.batch_id ? transactions.filter(x => x.batch_id === empEdit.batch_id && x.id !== empEdit.id) : [];
 
   const openEmpEdit = (t) => {
     setEmpEdit(t);
     setEmCat(t.category_id ? String(t.category_id) : ''); setEmSum(String(t.amount));
     setEmMethod(t.payment_method); setEmBank(t.bank_id ? String(t.bank_id) : '');
     setEmTask(t.task_id ? String(t.task_id) : ''); setEmComment(t.comment || '');
+    setEmDate(t.op_date);
   };
 
   const saveEmpEdit = async () => {
@@ -122,10 +129,15 @@ function EmployeeView(props) {
     if ((patch.task_id || null) !== (empEdit.task_id || null)) {
       patch.client_id = patch.task_id ? tasks.find(x => x.id === patch.task_id)?.client_id || null : null;
     }
+    const moved = emDate && emDate !== empEdit.op_date;
+    if (moved) { patch.op_date = emDate; patch.moved_from = null; }
     const ok = await db.updateTransaction(empEdit, patch);
     if (!ok) return;
+    if (moved) for (const x of emBatch) await db.updateTransaction(x, { op_date: emDate, moved_from: null });
     setEmpEdit(null);
-    showToast('Исправлено ✓ (в историю записалось, что поменялось)');
+    showToast(moved
+      ? `Перенесена за ${ddmm(emDate)} ✓ — теперь она в том дне`
+      : 'Исправлено ✓ (в историю записалось, что поменялось)');
   };
   const isToday = opDate === TODAY_D;
   const isYesterday = opDate === YESTERDAY_D;
@@ -488,6 +500,23 @@ function EmployeeView(props) {
             <input value={emComment} onChange={e => setEmComment(e.target.value)} placeholder="Комментарий" style={{
               width: '100%', padding: '12px 15px', borderRadius: 14, border: `1px solid ${UI.line}`, background: UI.soft, fontSize: 14, outline: 'none',
             }} />
+            {/* Какой день: записали не тем днём — переносим (последние 3 дня, 030) */}
+            {empEdit.op_date >= EDIT_FROM_D && (
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: UI.muted, marginBottom: 6 }}>День оплаты</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {emDays.map(([d, l]) => (
+                    <button key={d} onClick={() => setEmDate(d)} style={{
+                      border: 'none', borderRadius: 999, padding: '8px 14px', fontSize: 12.5, fontWeight: 700,
+                      background: emDate === d ? UI.accent : UI.soft,
+                    }}>{l} · {ddmm(d)}</button>
+                  ))}
+                </div>
+                {emDate !== empEdit.op_date && emBatch.length > 0 && (
+                  <div style={{ color: UI.muted, fontSize: 12, marginTop: 6 }}>Оплата разбита на {emBatch.length + 1} статьи — переедет целиком</div>
+                )}
+              </div>
+            )}
             <button onClick={saveEmpEdit} style={{ border: 'none', background: UI.dark, color: '#fff', borderRadius: 999, padding: '14px 0', fontWeight: 800, fontSize: 14 }}>
               Сохранить (в историю запишется, что изменилось)
             </button>

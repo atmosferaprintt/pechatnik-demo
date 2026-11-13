@@ -1,8 +1,11 @@
 #!/bin/bash
-# Раз в сутки забирает на мак последнюю копию базы ПЕЧАТНИКА с сервера 136.234.75.50.
+# Раз в день забирает на мак последнюю копию базы ПЕЧАТНИКА с сервера 136.234.75.50.
 # Рабочая копия скрипта — ~/Pechatnik-backups/pull.sh, её запускает launchd
-# (~/Library/LaunchAgents/ru.pechatnik.backup.plist, каждый день в 21:45).
-# Копии — ~/Pechatnik-backups/db/, последние 30 штук. Не скачалось — уведомление на маке.
+# (~/Library/LaunchAgents/ru.pechatnik.backup.plist): при включении мака и дальше каждый час.
+# Если сегодняшняя копия уже скачана, скрипт сразу выходит. Поэтому копия появляется каждый день,
+# даже если мак был выключен в какое-то конкретное время.
+# Копии — ~/Pechatnik-backups/db/, последние 30 штук.
+# Уведомление на маке — только если свежей копии нет больше суток, а не на каждую неудачную попытку.
 set -uo pipefail
 
 HOST=136.234.75.50
@@ -11,10 +14,16 @@ LOG="$ROOT/pull.log"
 mkdir -p "$ROOT/db"
 chmod 700 "$ROOT"
 
+# Сегодня уже скачано — до завтра ничего не делаем
+ls "$ROOT"/db/pechatnik-db-"$(date +%F)"_*.dump.gz >/dev/null 2>&1 && exit 0
+
 log() { echo "[$(date '+%F %T')] $*" >> "$LOG"; }
 fail() {
   log "ОШИБКА: $*"
-  osascript -e "display notification \"$*\" with title \"Копия ПЕЧАТНИКА не скачалась\"" >/dev/null 2>&1
+  # Тревожим, только когда последней удачной копии больше суток (или копий нет вовсе)
+  if [ -z "$(find "$ROOT/db" -name 'pechatnik-db-*.dump.gz' -mtime -1 2>/dev/null)" ]; then
+    osascript -e "display notification \"$*\" with title \"Копия ПЕЧАТНИКА не скачалась больше суток\"" >/dev/null 2>&1
+  fi
   exit 1
 }
 

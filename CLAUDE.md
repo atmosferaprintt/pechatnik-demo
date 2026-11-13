@@ -27,7 +27,7 @@ npm run preview  # локальный просмотр прод-сборки
 - **Сайт** — `/opt/pechatnik-web`, контейнер `pechatnik-web` на `127.0.0.1:8081`, API проксирует его nginx в `pechatnik-kong`.
 - **Caddy** общий: блок `crm.pechatnik-cherkessk.ru` во всех `/etc/caddy/Caddyfile*`.
 - **Чужое не трогать:** `supabase-db`, `supabase-kong`, порты 8000/8080 и `/opt/supabase` принадлежат **Атмосфере**. Наша база — только `pechatnik-db`.
-- **Бэкапы:** каждый час `/opt/backup-pechatnik-db.sh` → `/opt/backups/pechatnik/` (14 дней), раз в сутки на мак `~/Pechatnik-backups/` (launchd `ru.pechatnik.backup`, скрипт [scripts/pull-backup-mac.sh](scripts/pull-backup-mac.sh)).
+- **Бэкапы:** каждый час `/opt/backup-pechatnik-db.sh` → `/opt/backups/pechatnik/` (14 дней), раз в день на мак `~/Pechatnik-backups/db/` (30 копий; launchd `ru.pechatnik.backup` пробует при включении и каждый час, скачивает, только если сегодняшней копии ещё нет; уведомление — если свежей нет больше суток; скрипт [scripts/pull-backup-mac.sh](scripts/pull-backup-mac.sh), рабочая копия `~/Pechatnik-backups/pull.sh`).
 - ssh с мака — с `-o BindInterface=en0` (VPN рвёт соединение), `deploy.sh` делает это сам.
 - Новая база начата пустой; id записей с 1 000 000, чтобы старые данные с Beget, если вернутся, встали без конфликтов.
 
